@@ -4,7 +4,7 @@ A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Fi
 
 ## Download
 
-Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/thierrysays/cartocortex/releases/latest). The builds are not code-signed: on macOS right-click the app and choose Open the first time; on Windows choose More info, then Run anyway.
+Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/thierrysays/cartocortex/releases/latest). The builds are not code-signed: on macOS, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open; on Windows choose More info, then Run anyway.
 
 ## Run
 
