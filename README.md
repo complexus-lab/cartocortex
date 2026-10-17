@@ -79,3 +79,12 @@ XMind compatibility notes: structure classes, `fo:*` style keys, marker ids and 
 More structures: **Logic (left)** mirrors the logic chart around the root. **Brace** keeps the logic layout but draws a curly brace around each parent's children (a plain line when there is only a row or two). **Matrix** (XMind's spreadsheet structure) puts the top-level topics side by side as columns, each with its sub-topics listed beneath. They map to XMind's `logic.left`, `brace.right` and `spreadsheet.column`; XMind's `brace.left` opens as the right-hand brace, and its row-wise matrix opens as columns.
 
 Saving (desktop app): ⌘S saves to the current file, and asks where the first time (or after New); ⇧⌘S saves under a new name. The format follows the extension: `.json` (Cartocortex, keeps everything) or `.xmind`. The window title shows the file name, with a • while there are unsaved changes, and New, Open and closing the window ask before discarding them. "Recent…" lists the last 8 files (kept across restarts). In a browser, Save downloads a `.json` instead. The map is also autosaved in the app's own storage, which is what you see when you start without opening a file.
+
+## Development and releases
+
+- `.github/workflows/ci.yml` typechecks, builds and tests on every push to `main` or a `feat/*` branch, and compiles the desktop shell on macOS.
+- `.github/workflows/release.yml` builds the app for macOS (Apple silicon and Intel), Windows and Linux when you push a tag such as `v0.1.0`, and attaches the installers to a *draft* GitHub release for you to review. The builds are not code-signed, so macOS asks you to right-click the app and choose Open the first time.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
