@@ -3,6 +3,7 @@ import { fromFreemindBytes, toFreemind } from "./freemind";
 import { fromMindmanagerBytes, toMindmanager } from "./mindmanager";
 import { Node, toMarkdown } from "./model";
 import { fromMarkdown, fromOpml, toOpml } from "./outline-io";
+import { fromWisemapping, toWisemapping } from "./wisemapping";
 import { exportXmind, importXmindSheets } from "./xmind";
 
 export type Opened = { name: string; path: string | null; bytes: Uint8Array };
@@ -18,7 +19,7 @@ export const pushRecent = (list: string[], path: string, max = 8) => [path, ...l
 /** Only Cartocortex's own format keeps its place on disk when opened; every other format is an import (Save asks for a new file). */
 export const keepsPath = (name: string) => extOf(name) === "json";
 
-/** What to write for a document saved at `path`, by extension: XMind, OPML, Markdown, FreeMind, MindManager, otherwise Cartocortex JSON. */
+/** What to write for a document saved at `path`, by extension: XMind, OPML, Markdown, FreeMind, MindManager, WiseMapping, otherwise Cartocortex JSON. */
 export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
   const ext = extOf(path), text = (s: string) => new TextEncoder().encode(s);
   if (ext === "xmind") return exportXmind(roots);
@@ -26,10 +27,11 @@ export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
   if (ext === "md" || ext === "markdown") return text(roots.map((r) => toMarkdown(r)).join("\n"));
   if (ext === "mm") return text(toFreemind(roots));
   if (ext === "mmap") return toMindmanager(roots);
+  if (ext === "wxml") return text(toWisemapping(roots));
   return text(bookJson(roots, cur, true));
 }
 
-/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind or MindManager map gives one sheet per root topic. */
+/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind or MindManager map gives one sheet per root topic; a WiseMapping map gives one sheet. */
 export async function parseDoc(name: string, bytes: Uint8Array): Promise<Book> {
   const ext = extOf(name), text = () => new TextDecoder().decode(bytes);
   if (ext === "xmind") return { roots: await importXmindSheets(bytes), cur: 0 };
@@ -37,6 +39,7 @@ export async function parseDoc(name: string, bytes: Uint8Array): Promise<Book> {
   if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0 };
   if (ext === "mm") return { roots: await fromFreemindBytes(bytes), cur: 0 };
   if (ext === "mmap") return { roots: await fromMindmanagerBytes(bytes), cur: 0 };
+  if (ext === "wxml") return { roots: fromWisemapping(text()), cur: 0 };
   return parseBook(text());
 }
 
@@ -73,11 +76,11 @@ export async function writePath(path: string, bytes: Uint8Array) {
 export async function pickOpen(): Promise<Opened | null> {
   if (tauri()) {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const path = await open({ filters: [{ name: "Mind map or outline", extensions: ["json", "xmind", "opml", "md", "markdown", "mm", "mmap"] }] });
+    const path = await open({ filters: [{ name: "Mind map or outline", extensions: ["json", "xmind", "opml", "md", "markdown", "mm", "mmap", "wxml"] }] });
     return typeof path === "string" ? readPath(path) : null;
   }
   return new Promise((res) => {
-    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind,.opml,.md,.markdown,.mm,.mmap" });
+    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind,.opml,.md,.markdown,.mm,.mmap,.wxml" });
     i.onchange = async () => {
       const f = i.files?.[0];
       res(f ? { name: f.name, path: null, bytes: new Uint8Array(await f.arrayBuffer()) } : null);
@@ -113,6 +116,7 @@ export async function pickSavePath(defaultName: string): Promise<string | null> 
       { name: "OPML outline (.opml)", extensions: ["opml"] },
       { name: "FreeMind / Freeplane (.mm)", extensions: ["mm"] },
       { name: "MindManager (.mmap)", extensions: ["mmap"] },
+      { name: "WiseMapping (.wxml)", extensions: ["wxml"] },
       { name: "Markdown outline (.md)", extensions: ["md"] },
     ],
   });
