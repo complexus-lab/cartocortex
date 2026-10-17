@@ -11,6 +11,7 @@ export type Node = {
   icon?: string;
   note?: string;
   link?: string;
+  image?: { src: string; w: number; h: number }; // a picture shown as a thumbnail in the topic; src is an embedded data URL
   topicLink?: string; // id of another topic this one points to (a link inside the map)
   priority?: number; // task priority, 1 (most urgent) to 9
   progress?: number; // task progress in percent
@@ -96,7 +97,7 @@ export const visibleIds = (n: Node): string[] => [n.id, ...(n.collapsed ? [] : n
 
 const H = 34, GAP_X = 56, GAP_Y = 12;
 export const widthOf = (n: Node) =>
-  Math.max(56, [...n.text].length * (n.bold ? 9.2 : 8.5) + 28 + (n.icon ? 22 : 0) + (n.priority ? 24 : 0) + (n.progress != null ? 24 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
+  Math.max(56, [...n.text].length * (n.bold ? 9.2 : 8.5) + 28 + (n.icon ? 22 : 0) + (validImage(n.image) ? thumbW(n.image) + 6 : 0) + (n.priority ? 24 : 0) + (n.progress != null ? 24 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
 
 type Raw = Omit<Box, "side" | "branch" | "flow">;
 
@@ -419,3 +420,14 @@ export function reveal(root: Node, id: string): Node {
   for (let p = parentOf(root, id); p; p = parentOf(root, p.id)) if (p.collapsed) above.push(p.id);
   return above.reduce((r, pid) => map(r, pid, (n) => ({ ...n, collapsed: false })), root);
 }
+
+/** Width of a topic's thumbnail: 22px tall, never narrower than 14px or wider than 48px. */
+export const thumbW = (i: { w: number; h: number }) => Math.max(14, Math.min(48, Math.round((22 * i.w) / i.h)));
+
+/** True for an embedded PNG, JPEG, GIF or WebP of sane size. Maps can come from anywhere, so nothing else is ever drawn (no SVG, no URLs). */
+export const validImage = (i: Node["image"]): i is NonNullable<Node["image"]> =>
+  !!i &&
+  typeof i.src === "string" &&
+  i.src.length <= 1_000_000 &&
+  /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(i.src) &&
+  Number.isFinite(i.w) && Number.isFinite(i.h) && i.w > 0 && i.h > 0 && i.w <= 4000 && i.h <= 4000;

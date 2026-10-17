@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Node, addChild, addSibling, clone, findNode, discard, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, rename,
-  reveal, search, toMarkdown, toggle, visibleIds,
+  reveal, search, thumbW, toMarkdown, toggle, validImage, visibleIds,
 } from "./model";
 import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
-import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
+import { downscale } from "./image";
+import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
@@ -91,6 +92,7 @@ export default function App() {
   const [linking, setLinking] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [pickingTopic, setPickingTopic] = useState(false); // choosing the target of a link to a topic
+  const [preview, setPreview] = useState<string | null>(null); // a topic's picture shown full size
   const [sumSel, setSumSel] = useState<string | null>(null);
   const [sumEdit, setSumEdit] = useState<string | null>(null);
   const [present, setPresent] = useState<number | null>(null); // presentation step, null = off
@@ -293,6 +295,21 @@ export default function App() {
     document.title = title;
     if (isTauri) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().setTitle(title)).catch(() => {});
   }, [docPath, dirty]);
+
+  const addImage = async () => {
+    try {
+      const file = await pickImage();
+      if (file) setNode({ image: await downscale(file) });
+    } catch (e) {
+      alert(`Could not add the picture: ${(e as Error).message}`);
+    }
+  };
+  useEffect(() => {
+    if (!preview) return;
+    const close = (e: KeyboardEvent) => e.key === "Escape" && setPreview(null);
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [preview]);
 
   // Ask before closing the window with unsaved changes.
   useEffect(() => {
@@ -733,6 +750,9 @@ export default function App() {
                   }}
                 >
                   {n.icon && <span className="mark">{n.icon}</span>}
+                  {validImage(n.image) && (
+                    <img className="thumb" alt="" src={n.image.src} style={{ width: thumbW(n.image) }} title="Show the picture" onClick={(e) => (e.stopPropagation(), setPreview(n.image!.src))} />
+                  )}
                   {n.priority ? (
                     <span className="prio" title={`Priority ${n.priority}`} style={{ background: prioColors(n.priority).bg, color: prioColors(n.priority).fg }}>
                       {n.priority}
@@ -884,6 +904,11 @@ export default function App() {
             {selNode.topicLink && (
               <div className="hint">{where(selNode.topicLink) ? `→ ${where(selNode.topicLink)!.node.text || "…"}` : "The linked topic no longer exists."}</div>
             )}
+            <label>Picture</label>
+            <div className="row">
+              <button onClick={addImage}>{validImage(selNode.image) ? "Replace…" : "Add…"}</button>
+              {selNode.image && <button onClick={() => setNode({ image: undefined })}>Remove</button>}
+            </div>
             <label>Notes</label>
             <RichEdit
               multiline
@@ -898,6 +923,11 @@ export default function App() {
           </aside>
         )}
       </div>
+      {preview && (
+        <div className="preview" onClick={() => setPreview(null)}>
+          <img src={preview} alt="" />
+        </div>
+      )}
       {present !== null && (
         <div className="hud">
           <button onClick={() => setPresent(Math.max(0, present - 1))}>←</button>

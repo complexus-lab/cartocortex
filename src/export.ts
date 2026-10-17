@@ -1,4 +1,4 @@
-import { Box, Node, findNode, visibleIds } from "./model";
+import { Box, Node, findNode, thumbW, validImage, visibleIds } from "./model";
 import { summaryD, summaryGeo } from "./summary";
 import { progressText } from "./task";
 import { runsSvg, validRuns } from "./rich";
@@ -100,9 +100,12 @@ export function mapSvg(root: Node, boxes: Box[], rawColorOf: (b: Box) => string)
     }
     const pre = [n.icon, n.priority ? `P${n.priority}` : "", n.progress != null ? progressText(n.progress) : ""].filter(Boolean).join(" ");
     const post = [n.note ? "📝" : "", n.link ? "🔗" : ""].filter(Boolean).join(" ");
+    const im = validImage(n.image) ? n.image : undefined; // only a checked data URL ever reaches the markup
+    const shift = im ? (thumbW(im) + 6) / 2 : 0; // the text makes room for the thumbnail on its left
+    if (im) out.push(`<image href="${im.src}" x="${b.x + 10}" y="${b.y + (b.h - 22) / 2}" width="${thumbW(im)}" height="22" preserveAspectRatio="xMidYMid meet"/>`);
     const runs = validRuns(n.text, n.runs);
     const label = [pre && esc(pre), runs ? runsSvg(runs) : esc(n.text || "…"), post && esc(post)].filter(Boolean).join(" ");
-    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${n.bold ? 700 : isRoot ? 600 : 400}"${n.italic ? ' font-style="italic"' : ""}${n.strike ? ' text-decoration="line-through"' : ""} fill="${hex(n.textColor) ?? "#1e3a5f"}">${label}</text>`);
+    out.push(`<text x="${b.x + b.w / 2 + shift}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${n.bold ? 700 : isRoot ? 600 : 400}"${n.italic ? ' font-style="italic"' : ""}${n.strike ? ' text-decoration="line-through"' : ""} fill="${hex(n.textColor) ?? "#1e3a5f"}">${label}</text>`);
   }
   for (const { s, g } of sums) {
     const l = g.label;

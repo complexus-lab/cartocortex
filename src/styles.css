@@ -105,3 +105,8 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .node.flow-fish .fold { right: auto; left: -10px; }
 
 .panel .hint { font-size: 12px; color: var(--muted); }
+
+/* Pictures on topics: a small thumbnail in the topic, the full image on click. */
+.thumb { height: 22px; border-radius: 3px; object-fit: cover; cursor: zoom-in; flex: none; }
+.preview { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(30, 58, 95, .35); cursor: zoom-out; }
+.preview img { max-width: 85vw; max-height: 85vh; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 30px rgba(30, 58, 95, .3); }

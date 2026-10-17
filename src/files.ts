@@ -80,6 +80,22 @@ export async function pickOpen(): Promise<Opened | null> {
   });
 }
 
+/** Pick a picture to put on a topic: the system dialog (desktop app) or a file input (browser). */
+export async function pickImage(): Promise<Blob | null> {
+  if (tauri()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const path = await open({ filters: [{ name: "Picture", extensions: ["png", "jpg", "jpeg", "gif", "webp"] }] });
+    if (typeof path !== "string") return null;
+    const ext = extOf(path);
+    return new Blob([await (await import("@tauri-apps/plugin-fs")).readFile(path)], { type: ext === "jpg" ? "image/jpeg" : `image/${ext}` });
+  }
+  return new Promise((res) => {
+    const i = Object.assign(document.createElement("input"), { type: "file", accept: "image/png,image/jpeg,image/gif,image/webp" });
+    i.onchange = () => res(i.files?.[0] ?? null);
+    i.click();
+  });
+}
+
 /** The system "save as" dialog (desktop app only). */
 export async function pickSavePath(defaultName: string): Promise<string | null> {
   const { save } = await import("@tauri-apps/plugin-dialog");
