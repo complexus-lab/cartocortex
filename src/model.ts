@@ -15,7 +15,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "map";
+  layout?: "right" | "map" | "down" | "tree"; // logic chart, two-sided map, org chart, tree chart
   theme?: string;
   title?: string; // sheet name (tab label); falls back to the central topic text
   rels?: Rel[];
@@ -27,6 +27,7 @@ export type Box = {
   parent?: string; depth: number;
   side: 1 | -1; // which side of the root the node grows towards
   branch: number; // index of the top-level ancestor (-1 for the root)
+  flow: "right" | "down" | "tree"; // how branches run: sideways, top-down (org chart) or an indented list (tree chart)
 };
 
 export const mk = (text = ""): Node => ({ id: crypto.randomUUID(), text, children: [] });
@@ -88,7 +89,7 @@ const H = 34, GAP_X = 56, GAP_Y = 12;
 export const widthOf = (n: Node) =>
   Math.max(56, [...n.text].length * 8.5 + 28 + (n.icon ? 22 : 0) + (n.priority ? 24 : 0) + (n.progress != null ? 24 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
 
-type Raw = Omit<Box, "side" | "branch">;
+type Raw = Omit<Box, "side" | "branch" | "flow">;
 
 /** Tidy right-growing tree: leaves take consecutive rows, parents centre on their children. */
 function half(root: Node): Raw[] {
@@ -119,24 +120,75 @@ function half(root: Node): Raw[] {
   return out;
 }
 
-/** "right": everything grows right. "map": top-level branches split between right and left of the root. */
+const COL_GAP = 28, ROW_GAP = 56, INDENT = 36;
+
+/** Org chart: children sit in a row below their parent, parents centred over them. */
+function vertical(root: Node): Raw[] {
+  const out: Raw[] = [];
+  let cursor = 0;
+  const place = (n: Node, d: number, parent?: string): number => {
+    const kids = n.collapsed ? [] : n.children;
+    const slot = out.length, start = cursor, w = widthOf(n);
+    out.push(null as unknown as Raw); // reserve so parents precede children
+    let cx = start + w / 2;
+    if (kids.length) {
+      const xs = kids.map((c) => place(c, d + 1, n.id));
+      cx = (xs[0] + xs[xs.length - 1]) / 2;
+      const over = start - (cx - w / 2); // a parent wider than its children must not spill into the previous subtree
+      if (over > 0) {
+        for (let i = slot + 1; i < out.length; i++) out[i].x += over;
+        cx += over;
+        cursor += over;
+      }
+    }
+    cursor = Math.max(cursor, cx + w / 2 + COL_GAP);
+    out[slot] = { id: n.id, x: cx - w / 2, y: d * (H + ROW_GAP), w, h: H, parent, depth: d };
+    return cx;
+  };
+  place(root, 0);
+  return out;
+}
+
+/** Tree chart: one row per topic, children indented under their parent. */
+function indented(root: Node): Raw[] {
+  const out: Raw[] = [];
+  const place = (n: Node, d: number, parent?: string) => {
+    out.push({ id: n.id, x: d * INDENT, y: out.length * (H + GAP_Y), w: widthOf(n), h: H, parent, depth: d });
+    if (!n.collapsed) n.children.forEach((c) => place(c, d + 1, n.id));
+  };
+  place(root, 0);
+  return out;
+}
+
+/**
+ * "right": everything grows right. "map": top-level branches split between right and left of the root.
+ * "down": org chart. "tree": indented tree chart.
+ */
 export function layout(root: Node): Box[] {
   const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
-  const cut = root.layout === "map" && !root.collapsed ? Math.ceil(kids.length / 2) : kids.length;
-  const right = half({ ...root, children: kids.slice(0, cut) });
-  const out: Box[] = right.map((b) => ({ ...b, side: 1, branch: -1 }));
+  const flow: Box["flow"] = root.layout === "down" ? "down" : root.layout === "tree" ? "tree" : "right";
+  const out: Box[] = [];
 
-  if (cut < kids.length) {
-    const left = half({ ...root, collapsed: false, children: kids.slice(cut) });
-    const dy = right[0].y - left[0].y; // line the two roots up
-    const rw = right[0].w;
-    for (const b of left.slice(1)) out.push({ ...b, x: rw - b.x - b.w, y: b.y + dy, side: -1, branch: -1 });
+  if (flow !== "right") {
+    const raw = (flow === "down" ? vertical : indented)({ ...root, children: kids });
+    out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
+  } else {
+    const cut = root.layout === "map" && !root.collapsed ? Math.ceil(kids.length / 2) : kids.length;
+    const right = half({ ...root, children: kids.slice(0, cut) });
+    out.push(...right.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
+
+    if (cut < kids.length) {
+      const left = half({ ...root, collapsed: false, children: kids.slice(cut) });
+      const dy = right[0].y - left[0].y; // line the two roots up
+      const rw = right[0].w;
+      for (const b of left.slice(1)) out.push({ ...b, x: rw - b.x - b.w, y: b.y + dy, side: -1, branch: -1, flow });
+    }
   }
 
   for (const f of root.children.filter((c) => c.float)) {
     const raw = half(f);
     const dx = f.float!.x - raw[0].x, dy = f.float!.y - raw[0].y;
-    for (const b of raw) out.push({ ...b, x: b.x + dx, y: b.y + dy, depth: b.depth + 1, side: 1, branch: -1 });
+    for (const b of raw) out.push({ ...b, x: b.x + dx, y: b.y + dy, depth: b.depth + 1, side: 1, branch: -1, flow: "right" });
   }
 
   // Branch index = position among all top-level topics, which also drives colours and presentation steps.
@@ -155,6 +207,19 @@ export const toMarkdown = (n: Node, depth = 0): string =>
 /** Arrow-key navigation over the visible layout. */
 export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "right" | "up" | "down"): string {
   const me = boxes.find((b) => b.id === id)!;
+  const firstKid = () => (findNode(root, id)!.collapsed ? undefined : findNode(root, id)!.children.find((c) => !c.float))?.id ?? id;
+  if (me.flow === "down") {
+    if (dir === "up") return me.parent ?? id;
+    if (dir === "down") return firstKid();
+    const row = boxes.filter((b) => b.flow === "down" && b.depth === me.depth).sort((a, b) => a.x - b.x);
+    return (row[row.findIndex((b) => b.id === id) + (dir === "right" ? 1 : -1)] ?? me).id;
+  }
+  if (me.flow === "tree") {
+    if (dir === "left") return me.parent ?? id;
+    if (dir === "right") return firstKid();
+    const rows = boxes.filter((b) => b.flow === "tree").sort((a, b) => a.y - b.y);
+    return (rows[rows.findIndex((b) => b.id === id) + (dir === "down" ? 1 : -1)] ?? me).id;
+  }
   if (dir === "left" || dir === "right") {
     const toward = dir === "right" ? 1 : -1;
     const n = findNode(root, id)!;

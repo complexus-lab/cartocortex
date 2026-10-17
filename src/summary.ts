@@ -30,7 +30,7 @@ export function summaryGeo(root: Node, boxes: Box[], s: Summary): SumGeo | null 
   const i = p.children.findIndex((c) => c.id === s.from), j = p.children.findIndex((c) => c.id === s.to);
   const byId = Object.fromEntries(boxes.map((b) => [b.id, b]));
   const first = byId[p.children[Math.min(i, j)].id];
-  if (!first) return null;
+  if (!first || first.flow !== "right") return null; // summaries are drawn for sideways layouts only
   const side = first.side;
   const bs = p.children
     .slice(Math.min(i, j), Math.max(i, j) + 1)

@@ -38,7 +38,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Rich text, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
+Rich text, fishbone and other structures, and legacy XML-only `.xmind` files.
 
 ## Added
 
@@ -63,3 +63,5 @@ Sheets: tabs under the toolbar, one root topic and one undo history per sheet. "
 Look: the UI follows the Glossolalie palette (teal `#0D9488` accent, navy `#1E3A5F` ink, pale teal tints for surfaces, thin 40%-tint rules) with no dark fills and no dark mode; the central topic is a tinted pill with a thicker teal border. The default theme is named "Glossolalie"; the other themes only change branch colours. PNG / PDF export uses the same ink and tints.
 
 Task markers and links: the panel sets a priority (1-5, a numbered disc: darker is more urgent) and a progress (0-100%, a pie that becomes a check at 100%) on the selected topics; both map to XMind's `priority-N` and `task-*` markers on `.xmind` import and export (other XMind markers are dropped). A topic's link shows a 🔗 badge: click it, or use "Open link", to open it in the system browser. Only http, https and mailto links open; a bare host such as `example.com` gets https://, and `javascript:` or `file:` links are refused.
+
+Structures: the toolbar picker offers Logic (right), Map (both sides), Org chart (top-down) and Tree (indented list). Arrow keys follow the structure (in an org chart, ↓ goes to the first child and ← / → move between topics in a row; in a tree, ↑ / ↓ walk the rows). Summaries are drawn in the Logic and Map structures only. The structure is saved per sheet and maps to XMind's org-chart, tree-chart, logic and map structures; other XMind structures (fishbone, matrix, timeline) open as Logic.

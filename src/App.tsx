@@ -475,6 +475,8 @@ export default function App() {
         <select value={s.root.layout ?? "right"} onChange={(e) => setDocProp({ layout: e.target.value as Node["layout"] })} title="Structure">
           <option value="right">Logic (right)</option>
           <option value="map">Map (both sides)</option>
+          <option value="down">Org chart (down)</option>
+          <option value="tree">Tree (indented)</option>
         </select>
         <select value={s.root.theme ?? "classic"} onChange={(e) => setDocProp({ theme: e.target.value })} title="Theme">
           {Object.entries(THEMES).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}
@@ -592,7 +594,7 @@ export default function App() {
               return (
                 <div
                   key={b.id}
-                  className={`node${b.depth === 0 ? " root" : ""}${picked.has(b.id) ? " sel" : ""}${dragging === b.id ? " dragging" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
+                  className={`node${b.depth === 0 ? " root" : ""}${picked.has(b.id) ? " sel" : ""}${dragging === b.id ? " dragging" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${b.flow !== "right" ? ` flow-${b.flow}` : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
                   style={{ left: b.x, top: b.y, width: b.w, height: b.h, "--c": colorOf(b) } as React.CSSProperties}
                   data-id={b.id}
                   draggable={b.depth > 0 && s.edit !== b.id && !n.float}

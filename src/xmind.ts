@@ -122,13 +122,20 @@ const fromX = (t: XTopic): Node => {
 
 type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic };
 
+const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
+  right: "org.xmind.ui.logic.right",
+  map: "org.xmind.ui.map.clockwise",
+  down: "org.xmind.ui.org-chart.down",
+  tree: "org.xmind.ui.tree.right",
+};
+
 const toSheet = (root: Node, i: number): XSheet => ({
   id: crypto.randomUUID(),
   class: "sheet",
   title: root.title || root.text || `Sheet ${i + 1}`,
   rootTopic: {
     ...toX(root),
-    structureClass: root.layout === "map" ? "org.xmind.ui.map.clockwise" : "org.xmind.ui.logic.right",
+    structureClass: STRUCTURE[root.layout ?? "right"],
   },
 });
 
@@ -149,7 +156,11 @@ export async function importXmindSheets(bytes: Uint8Array): Promise<Node[]> {
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
       const root = fromX(sh.rootTopic!);
-      if (sh.rootTopic!.structureClass?.includes("map")) root.layout = "map";
+      const sc = sh.rootTopic!.structureClass ?? "";
+      // Other structures (fishbone, matrix, timeline…) come in as the default logic chart.
+      if (sc.includes("org-chart")) root.layout = "down";
+      else if (sc.includes("tree")) root.layout = "tree";
+      else if (sc.includes("map")) root.layout = "map";
       if (sh.title) root.title = sh.title;
       return root;
     });

@@ -46,6 +46,7 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .node.left .fold { right: auto; left: -10px; }
 
 .panel { width: 250px; padding: 12px; overflow: auto; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.panel > * { flex-shrink: 0; } /* the panel scrolls; its items must not squash */
 .panel h4 { margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel label { margin-top: 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .panel .row { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -89,3 +90,6 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .prog { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--teal); background: conic-gradient(var(--teal) calc(var(--p) * 1%), var(--tint20) 0); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
 .badge.link { cursor: pointer; }
 .badge.link:hover { transform: scale(1.2); }
+
+/* Org chart: the fold chip hangs under the topic instead of sitting on its right edge. */
+.node.flow-down .fold { right: 50%; top: auto; bottom: -10px; transform: translateX(50%); }

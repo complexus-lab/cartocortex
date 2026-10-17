@@ -11,6 +11,11 @@ export function edgePoint(b: Box, tx: number, ty: number) {
 
 /** Curve from parent `p` to child `b`, leaving on the side the child grows towards. */
 export function branchD(b: Box, p: Box) {
+  if (b.flow === "down") {
+    const x0 = p.x + p.w / 2, y0 = p.y + p.h, x1 = b.x + b.w / 2, my = (y0 + b.y) / 2;
+    return `M${x0} ${y0} C${x0} ${my} ${x1} ${my} ${x1} ${b.y}`;
+  }
+  if (b.flow === "tree") return `M${p.x + 14} ${p.y + p.h}V${b.y + b.h / 2}H${b.x}`; // elbow: down the parent's edge, then across
   const left = b.side === -1;
   const x0 = left ? p.x : p.x + p.w, y0 = p.y + p.h / 2, x1 = left ? b.x + b.w : b.x, y1 = b.y + b.h / 2, mx = (x0 + x1) / 2;
   return `M${x0} ${y0} C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`;
