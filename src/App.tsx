@@ -35,9 +35,12 @@ const THEMES: Record<string, { name: string; root: string; accent: string; palet
 const ICONS = ["⭐", "❗", "❓", "✅", "❌", "💡", "🔥", "🚩", "⚠️", "❤️"];
 const SHAPES = [["round", "Round"], ["rect", "Box"], ["line", "Line"]] as const;
 
+// Extra windows (File > New window, or Open while a map is already open) carry ?w=1 and neither load nor write the autosave of the main window.
+const QUERY = new URLSearchParams(location.search), EXTRA = QUERY.has("w");
 const KEY = "mindmap.autosave";
 const load = (): Book => {
   try {
+    if (EXTRA) throw 0;
     return parseBook(localStorage.getItem(KEY) ?? "");
   } catch {
     return { roots: [{ ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] }], cur: 0 };
@@ -140,7 +143,7 @@ export default function App() {
   useEffect(() => {
     const json = bookJson(park().roots, sheets.cur);
     try {
-      localStorage.setItem(KEY, json);
+      if (!EXTRA) localStorage.setItem(KEY, json);
     } catch {
       /* storage unavailable: autosave is best-effort */
     }
@@ -276,15 +279,27 @@ export default function App() {
     const own = keepsPath(f.name);
     markSaved(own ? f.path : null, own ? bookJson(book.roots, book.cur) : "");
   };
+  const occupied = useRef(EXTRA && QUERY.has("open")); // this window already holds a file, so another one opens beside it
+  const newWindow = async (path?: string) => {
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    const w = new WebviewWindow(`w${Date.now()}`, { url: `/?w=1${path ? `&open=${encodeURIComponent(path)}` : ""}`, title: "Cartocortex", width: 1100, height: 720 });
+    w.once("tauri://error", (e) => alert(`Could not open a new window: ${String(e.payload)}`));
+  };
   const open = async (path?: string) => {
     try {
-      if (dirtyRef.current && !(await confirmDiscard())) return;
       const f = path ? await readPath(path) : await pickOpen();
-      if (f) await loadOpened(f);
+      if (!f) return;
+      if (isTauri && f.path && (occupied.current || dirtyRef.current || docPath)) return await newWindow(f.path);
+      occupied.current = true;
+      await loadOpened(f);
     } catch (e) {
       alert(`Could not open file: ${(e as Error).message}`);
     }
   };
+  useEffect(() => {
+    const p = QUERY.get("open");
+    if (EXTRA && p) open(p);
+  }, []);
   const startFrom = async (root: Node) => {
     if (dirtyRef.current && !(await confirmDiscard())) return;
     openSheet(0, { roots: [root], hist: [emptyHist(root)], cur: 0 });
@@ -626,7 +641,8 @@ export default function App() {
           <option value="">Template…</option>
           {TEMPLATES.map((x, i) => <option key={x.name} value={i}>{x.name}</option>)}
         </select>
-        <button onClick={() => open()} title="Open a map (⌘O)">Open…</button>
+        <button onClick={() => open()} title="Open a map (⌘O); opens beside the current one if it holds a file">Open…</button>
+        {isTauri && <button onClick={() => newWindow()} title="Start a new map in its own window">New window</button>}
         {isTauri && recent.length > 0 && (
           <select value="" title="Recent files" onChange={(e) => e.target.value && open(e.target.value)}>
             <option value="">Recent…</option>

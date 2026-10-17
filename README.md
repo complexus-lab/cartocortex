@@ -2,6 +2,8 @@
 
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
+Several maps at once (desktop app): Open… puts a map in its own window when the current window already holds a file or unsaved work, and "New window" starts a blank one. Extra windows do not touch the main window's autosave.
+
 ## Download
 
 Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/thierrysays/cartocortex/releases/latest). The builds are not code-signed: on macOS, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open; on Windows choose More info, then Run anyway.
