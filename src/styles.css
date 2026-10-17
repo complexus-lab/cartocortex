@@ -1,0 +1,27 @@
+:root {
+  --bg: #f6f7f9; --panel: #fff; --ink: #1d2330; --muted: #6b7385; --line: #aeb6c6;
+  --accent: #3b6cff; --node: #fff; --root: #3b6cff; --root-ink: #fff;
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161a22; --panel: #1f2430; --ink: #e8ebf2; --muted: #8f98ab; --line: #4a5266; --node: #262c3a; }
+}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100%; }
+.toolbar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); z-index: 2; }
+.toolbar button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.toolbar button:hover:not(:disabled) { border-color: var(--accent); }
+.toolbar button:disabled { opacity: .4; cursor: default; }
+.toolbar kbd { color: var(--muted); font: inherit; font-size: 12px; margin-left: 4px; }
+.sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.stage { flex: 1; position: relative; overflow: hidden; cursor: grab; }
+.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; }
+.edges path { fill: none; stroke: var(--line); stroke-width: 2; }
+.node { position: absolute; display: flex; align-items: center; justify-content: center; padding: 0 12px; background: var(--node); border: 2px solid var(--line); border-radius: 17px; pointer-events: auto; cursor: pointer; user-select: none; white-space: nowrap; }
+.node.root { background: var(--root); color: var(--root-ink); border-color: var(--root); font-weight: 600; }
+.node.sel { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.node input { width: 100%; font: inherit; color: inherit; background: transparent; border: 0; outline: 0; text-align: center; }
+.fold { position: absolute; right: -10px; top: 50%; transform: translateY(-50%); min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; line-height: 16px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
