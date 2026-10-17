@@ -1,17 +1,19 @@
-// Generates app-icon.svg: a side-view brain with a network of connected neurons on a teal tile.
+// Generates app-icon.svg: a side-view brain with a network of connected neurons on a pale teal tile.
 // Run:  node scripts/make-icon.mjs
 // Then render it to a 1024px PNG and run `npx tauri icon app-icon.png` (see README).
 import { writeFileSync } from "node:fs";
 
-// Teal palette: edit here to re-theme the icon.
+// Palette Glossolalie Advisory: teal #0D9488 (accent) and navy #1E3A5F (structure) as ink and fine lines,
+// pale teal tints as the only backgrounds (no dark fills). Edit here to re-theme the icon.
 const C = {
-  tileLight: "#0f9b8e", tileMid: "#0a5c58", tileDark: "#032a29",
-  brainLight: "#2cc9b8", brainDark: "#0e7f77", // cerebrum gradient
-  back: "#0d6b66",                              // cerebellum + brainstem
-  rim: "#99f6e4",                               // outlines
-  sulcus: "#99f6e4",
-  link: "#ccfbf1", glow: "#5eead4",
-  node: "#f0fdfa", nodeRing: "#2dd4bf",
+  tileLight: "#F0F9F8", tileMid: "#E7F4F3", tileDark: "#CFE9E7", // tile: 5 / 10 / 20 % teal tints
+  border: "#9FD3CF",                                              // 40 % tint: tile edge
+  brainLight: "#FFFFFF", brainDark: "#CFE9E7",                    // cerebrum fill
+  back: "#9FD3CF",                                                // cerebellum + brainstem
+  rim: "#1E3A5F",                                                 // outlines (navy)
+  sulcus: "#0D9488",
+  link: "#0D9488", glow: "#0D9488",
+  node: "#0D9488", nodeRing: "#FFFFFF",
 };
 
 // Tiny seeded PRNG so the layout is reproducible. Change SEED for a different neuron arrangement.
@@ -113,7 +115,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" 
     <filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9"/></filter>
   </defs>
   <rect width="1024" height="1024" rx="228" fill="url(#tile)"/>
-  <rect x="6" y="6" width="1012" height="1012" rx="222" fill="none" stroke="${C.rim}" stroke-opacity=".18" stroke-width="4"/>
+  <rect x="6" y="6" width="1012" height="1012" rx="222" fill="none" stroke="${C.border}" stroke-width="6"/>
 
   <g transform="translate(512 520) scale(1.12) translate(-500 -520)">
   <path d="${stem}" fill="${C.back}" stroke="${C.rim}" stroke-width="8" stroke-linejoin="round"/>
@@ -123,9 +125,9 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" 
   <path d="${smooth(cerebrum)}" fill="url(#brain)" stroke="${C.rim}" stroke-width="10" stroke-linejoin="round"/>
   <g fill="none" stroke="${C.sulcus}" stroke-opacity=".32" stroke-width="9" stroke-linecap="round">${sulci.map((d) => `<path d="${d}"/>`).join("")}</g>
 
-  <g fill="none" stroke="${C.glow}" stroke-width="14" stroke-opacity=".45" filter="url(#blur)" stroke-linecap="round">${linkPaths.map((d) => `<path d="${d}"/>`).join("")}</g>
+  <g fill="none" stroke="${C.glow}" stroke-width="14" stroke-opacity=".2" filter="url(#blur)" stroke-linecap="round">${linkPaths.map((d) => `<path d="${d}"/>`).join("")}</g>
   <g fill="none" stroke="${C.link}" stroke-width="5" stroke-opacity=".9" stroke-linecap="round">${linkPaths.map((d) => `<path d="${d}"/>`).join("")}</g>
-  <g fill="${C.glow}" fill-opacity=".55" filter="url(#blur)">${nodes.map((n) => `<circle cx="${f(n.x)}" cy="${f(n.y)}" r="${f(n.r * 1.9)}"/>`).join("")}</g>
+  <g fill="${C.glow}" fill-opacity=".28" filter="url(#blur)">${nodes.map((n) => `<circle cx="${f(n.x)}" cy="${f(n.y)}" r="${f(n.r * 1.9)}"/>`).join("")}</g>
   <g fill="${C.node}" stroke="${C.nodeRing}" stroke-width="5">${nodes.map((n) => `<circle cx="${f(n.x)}" cy="${f(n.y)}" r="${f(n.r)}"/>`).join("")}</g>
   </g>
 </svg>
