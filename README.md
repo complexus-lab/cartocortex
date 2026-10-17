@@ -6,7 +6,7 @@ Tabs and menus: the toolbar is three menus (File with templates, recent files an
 
 ## Download
 
-Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/thierrysays/cartocortex/releases/latest). The builds are not code-signed: on macOS, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open; on Windows choose More info, then Run anyway.
+Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The builds are not code-signed: on macOS, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open; on Windows choose More info, then Run anyway.
 
 ## Run
 
