@@ -1,5 +1,6 @@
 import { Book, bookJson, parseBook } from "./book";
-import { Node } from "./model";
+import { Node, toMarkdown } from "./model";
+import { fromMarkdown, fromOpml, toOpml } from "./outline-io";
 import { exportXmind, importXmindSheets } from "./xmind";
 
 export type Opened = { name: string; path: string | null; bytes: Uint8Array };
@@ -12,13 +13,25 @@ export const extOf = (path: string) => (/\.([a-z0-9]+)$/i.exec(path)?.[1] ?? "")
 /** `path` first, without duplicates, capped at `max` entries. */
 export const pushRecent = (list: string[], path: string, max = 8) => [path, ...list.filter((p) => p !== path)].slice(0, max);
 
-/** What to write for a document saved at `path`: an XMind file for .xmind, otherwise Cartocortex JSON. */
-export const docBytes = (path: string, roots: Node[], cur: number): Uint8Array =>
-  extOf(path) === "xmind" ? exportXmind(roots) : new TextEncoder().encode(bookJson(roots, cur, true));
+/** Only Cartocortex's own format keeps its place on disk when opened; every other format is an import (Save asks for a new file). */
+export const keepsPath = (name: string) => extOf(name) === "json";
 
-/** The document in a file, by its extension. */
+/** What to write for a document saved at `path`, by extension: XMind, OPML, Markdown, otherwise Cartocortex JSON. */
+export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
+  const ext = extOf(path), text = (s: string) => new TextEncoder().encode(s);
+  if (ext === "xmind") return exportXmind(roots);
+  if (ext === "opml") return text(toOpml(roots));
+  if (ext === "md" || ext === "markdown") return text(roots.map((r) => toMarkdown(r)).join("\n"));
+  return text(bookJson(roots, cur, true));
+}
+
+/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic. */
 export async function parseDoc(name: string, bytes: Uint8Array): Promise<Book> {
-  return extOf(name) === "xmind" ? { roots: await importXmindSheets(bytes), cur: 0 } : parseBook(new TextDecoder().decode(bytes));
+  const ext = extOf(name), text = () => new TextDecoder().decode(bytes);
+  if (ext === "xmind") return { roots: await importXmindSheets(bytes), cur: 0 };
+  if (ext === "opml") return { roots: [fromOpml(text())], cur: 0 };
+  if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0 };
+  return parseBook(text());
 }
 
 const RECENT_KEY = "cartocortex.recent";
@@ -54,11 +67,11 @@ export async function writePath(path: string, bytes: Uint8Array) {
 export async function pickOpen(): Promise<Opened | null> {
   if (tauri()) {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const path = await open({ filters: [{ name: "Mind map", extensions: ["json", "xmind"] }] });
+    const path = await open({ filters: [{ name: "Mind map or outline", extensions: ["json", "xmind", "opml", "md", "markdown"] }] });
     return typeof path === "string" ? readPath(path) : null;
   }
   return new Promise((res) => {
-    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind" });
+    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind,.opml,.md,.markdown" });
     i.onchange = async () => {
       const f = i.files?.[0];
       res(f ? { name: f.name, path: null, bytes: new Uint8Array(await f.arrayBuffer()) } : null);
@@ -72,7 +85,12 @@ export async function pickSavePath(defaultName: string): Promise<string | null> 
   const { save } = await import("@tauri-apps/plugin-dialog");
   return save({
     defaultPath: defaultName,
-    filters: [{ name: "Cartocortex map (.json)", extensions: ["json"] }, { name: "XMind (.xmind)", extensions: ["xmind"] }],
+    filters: [
+      { name: "Cartocortex map (.json)", extensions: ["json"] },
+      { name: "XMind (.xmind)", extensions: ["xmind"] },
+      { name: "OPML outline (.opml)", extensions: ["opml"] },
+      { name: "Markdown outline (.md)", extensions: ["md"] },
+    ],
   });
 }
 

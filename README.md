@@ -88,3 +88,7 @@ Saving (desktop app): ⌘S saves to the current file, and asks where the first t
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md` or `.xmind` as well as `.json`.
+
+Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml` or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.

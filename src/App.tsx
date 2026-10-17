@@ -4,7 +4,8 @@ import {
   search, toMarkdown, toggle, visibleIds,
 } from "./model";
 import { exportXmind } from "./xmind";
-import { Opened, baseName, confirmDiscard, docBytes, download, extOf, loadRecent, parseDoc, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
+import { toOpml } from "./outline-io";
+import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
@@ -251,7 +252,9 @@ export default function App() {
   const loadOpened = async (f: Opened) => {
     const book = await parseDoc(f.name, f.bytes);
     openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
-    markSaved(f.path, bookJson(book.roots, book.cur));
+    // Any format but our own JSON is an import: the map stays "unsaved", so Save asks for a new file instead of overwriting the original.
+    const own = keepsPath(f.name);
+    markSaved(own ? f.path : null, own ? bookJson(book.roots, book.cur) : "");
   };
   const open = async (path?: string) => {
     try {
@@ -575,6 +578,7 @@ export default function App() {
         {isTauri && <button onClick={() => saveDoc(true)} title="Save under a new name (⇧⌘S)">Save as…</button>}
         <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(park().roots))}>Export XMind</button>
         <button onClick={() => saveFile(fileName("md"), "md", toMarkdown(s.root))}>Export MD</button>
+        <button onClick={() => saveFile(fileName("opml"), "opml", toOpml(park().roots))}>Export OPML</button>
         <button onClick={() => exportImage("png")}>PNG</button>
         <button onClick={() => exportImage("pdf")}>PDF</button>
         <span className="sep" />

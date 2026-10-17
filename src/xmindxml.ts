@@ -4,7 +4,7 @@ import { fromMarkers } from "./task";
 // Reader for the XML-only .xmind format (XMind 8 and earlier: content.xml inside the zip).
 // Deliberately tiny and strict: no DOCTYPE (so no entity tricks), only the five predefined entities plus numeric ones.
 
-type XNode = { name: string; attrs: Record<string, string>; children: XNode[]; text: string };
+export type XNode = { name: string; attrs: Record<string, string>; children: XNode[]; text: string };
 
 const local = (name: string) => name.replace(/^.*:/, ""); // drop namespace prefixes: xlink:href -> href
 
