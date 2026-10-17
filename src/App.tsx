@@ -6,6 +6,7 @@ import {
 import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
 import { toFreemind } from "./freemind";
+import { toIthoughts } from "./ithoughts";
 import { toMindmanager } from "./mindmanager";
 import { toMindomo } from "./mindomo";
 import { toWisemapping } from "./wisemapping";
@@ -604,6 +605,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
           { label: "FreeMind (.mm)", on: () => saveFile(fileName("mm"), "mm", toFreemind(park().roots)) },
           { label: "MindManager (.mmap)", on: () => saveFile(fileName("mmap"), "mmap", toMindmanager(park().roots)) },
           { label: "Mindomo (.mom)", on: () => saveFile(fileName("mom"), "mom", toMindomo(park().roots)) },
+          { label: "iThoughts (.itmz)", on: () => saveFile(fileName("itmz"), "itmz", toIthoughts(park().roots)) },
           { label: "WiseMapping (.wxml)", on: () => saveFile(fileName("wxml"), "wxml", toWisemapping(park().roots)) },
           { label: "Image (.png)", on: () => exportImage("png") },
           { label: "Document (.pdf)", on: () => exportImage("pdf") },
