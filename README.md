@@ -38,8 +38,10 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Multi-select, summaries, floating topics, multiple sheets, outline view, PNG/PDF export, clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
+Multi-select, summaries, floating topics, multiple sheets, clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
 
 ## Added
 
 Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (first sheet; text, notes, links, folding and structure only).
+
+Outline view (toolbar "Outline": Enter = sibling, Tab / Shift+Tab = indent / outdent, shares undo with the map) and PNG / PDF export (the PDF is one page holding an image of the map, so its text isn't selectable).

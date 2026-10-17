@@ -39,7 +39,7 @@ export const findNode = (n: Node, id: string): Node | undefined =>
 /** Shallow-merge `p` into one node (text, colour, note, theme, …). */
 export const patch = (root: Node, id: string, p: Partial<Node>) => map(root, id, (n) => ({ ...n, ...p }));
 
-export const rename = (root: Node, id: string, text: string) => patch(root, id, { text });
+export const rename = (root: Node, id: string, text: string) => (findNode(root, id)?.text === text ? root : patch(root, id, { text }));
 
 export const toggle = (root: Node, id: string) =>
   map(root, id, (n) => (n.children.length ? { ...n, collapsed: !n.collapsed } : n));
@@ -164,4 +164,23 @@ export function search(root: Node, q: string): string[] {
   };
   walk(root);
   return out;
+}
+
+/** Visible topics in document order with their depth (collapsed branches are skipped). */
+export const flat = (n: Node, d = 0): { n: Node; d: number }[] => [
+  { n, d },
+  ...(n.collapsed ? [] : n.children.flatMap((c) => flat(c, d + 1))),
+];
+
+/** Nest `id` under its previous sibling. No-op for a first child or the root. */
+export function indent(root: Node, id: string): Node {
+  const p = parentOf(root, id);
+  const i = p ? p.children.findIndex((c) => c.id === id) : -1;
+  return i > 0 ? moveTo(root, id, p!.children[i - 1].id) : root;
+}
+
+/** Move `id` out to sit right after its parent. No-op for top-level topics and the root. */
+export function outdent(root: Node, id: string): Node {
+  const p = parentOf(root, id);
+  return p && p.id !== root.id ? addSibling(remove(root, id), p.id, findNode(root, id)!) : root;
 }

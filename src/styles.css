@@ -51,3 +51,9 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .panel .sw.on { outline: 2px solid var(--ink); outline-offset: 1px; }
 .panel input, .panel textarea { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .panel textarea { min-height: 120px; resize: vertical; }
+
+.outline { flex: 1; overflow: auto; padding: 16px 12px; }
+.orow { display: flex; align-items: center; gap: 6px; padding-right: 12px; border-radius: 6px; }
+.orow.sel { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.obullet { width: 16px; text-align: center; color: var(--muted); cursor: pointer; user-select: none; }
+.orow input { flex: 1; font: inherit; color: inherit; background: transparent; border: 0; outline: 0; padding: 4px 6px; }

@@ -4,6 +4,8 @@ import {
   search, toMarkdown, toggle, visibleIds,
 } from "./model";
 import { exportXmind, importXmind } from "./xmind";
+import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
+import Outline from "./Outline";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
 
@@ -62,13 +64,6 @@ async function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> {
   });
 }
 
-/** Point on box `b`'s border in the direction of (tx, ty). */
-function edgePoint(b: Box, tx: number, ty: number) {
-  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
-  const s = Math.min(dx ? b.w / 2 / Math.abs(dx) : Infinity, dy ? b.h / 2 / Math.abs(dy) : Infinity);
-  return { x: cx + dx * s, y: cy + dy * s };
-}
-
 export default function App() {
   const [s, setS] = useState<S>(() => {
     const root = load();
@@ -76,6 +71,7 @@ export default function App() {
   });
   const [view, setView] = useState({ x: 80, y: Math.round(window.innerHeight / 2) - 40, k: 1 });
   const [panel, setPanel] = useState(true);
+  const [mode, setMode] = useState<"map" | "outline">("map");
   const [linking, setLinking] = useState(false);
   const [relSel, setRelSel] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -166,6 +162,14 @@ export default function App() {
 
   const fileName = (ext: string) => `${s.root.text.replace(/[\\/:*?"<>|]/g, "_") || "cartocortex"}.${ext}`;
   const saveJson = () => saveFile(fileName("json"), "json", JSON.stringify(s.root, null, 2));
+  const exportImage = async (kind: "png" | "pdf") => {
+    try {
+      const m = mapSvg(s.root, boxes, colorOf);
+      await saveFile(fileName(kind), kind, kind === "png" ? await mapToPng(m) : await mapToPdf(m));
+    } catch (e) {
+      alert(`Could not export: ${(e as Error).message}`);
+    }
+  };
   const open = async () => {
     const f = await openFile();
     if (!f) return;
@@ -181,7 +185,7 @@ export default function App() {
 
   const fit = () => {
     const el = stage.current;
-    if (!el || !boxes.length) return;
+    if (!el || !el.clientWidth || !boxes.length) return; // hidden while the outline is showing
     const x0 = Math.min(...boxes.map((b) => b.x)), x1 = Math.max(...boxes.map((b) => b.x + b.w));
     const y0 = Math.min(...boxes.map((b) => b.y)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
     const k = Math.min(1.5, (el.clientWidth - 100) / (x1 - x0), (el.clientHeight - 100) / (y1 - y0));
@@ -312,11 +316,16 @@ export default function App() {
         <button onClick={saveJson}>Save…</button>
         <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(s.root))}>Export XMind</button>
         <button onClick={() => saveFile(fileName("md"), "md", toMarkdown(s.root))}>Export MD</button>
-        <button onClick={fit}>Fit</button>
+        <button onClick={() => exportImage("png")}>PNG</button>
+        <button onClick={() => exportImage("pdf")}>PDF</button>
+        <span className="sep" />
+        <button className={mode === "outline" ? "on" : ""} onClick={() => setMode(mode === "map" ? "outline" : "map")}>Outline</button>
+        <button onClick={fit} disabled={mode === "outline"}>Fit</button>
         <button className={panel ? "on" : ""} onClick={() => setPanel(!panel)}>Panel</button>
       </div>
       <div className="main">
-        <div className="stage" ref={stage} onPointerDown={pan}>
+        {mode === "outline" && <Outline root={s.root} sel={s.sel} commit={commit} onSelect={(id) => setS((p) => (p.sel === id ? p : { ...p, sel: id }))} />}
+        <div className="stage" ref={stage} onPointerDown={pan} style={mode === "outline" ? { display: "none" } : undefined}>
           <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
             {bounds.map((id) => {
               const bs = visibleIds(byNode[id]).map((x) => byId[x]);
@@ -331,17 +340,10 @@ export default function App() {
                 </marker>
               </defs>
               {boxes.filter((b) => b.parent).map((b) => {
-                const p = byId[b.parent!];
-                const left = b.side === -1;
-                const x0 = left ? p.x : p.x + p.w, y0 = p.y + p.h / 2, x1 = left ? b.x + b.w : b.x, y1 = b.y + b.h / 2, mx = (x0 + x1) / 2;
-                return <path key={b.id} style={{ stroke: colorOf(b) }} d={`M${x0} ${y0} C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`} />;
+                return <path key={b.id} style={{ stroke: colorOf(b) }} d={branchD(b, byId[b.parent!])} />;
               })}
               {rels.map((r) => {
-                const f = byId[r.from], t = byId[r.to];
-                const a = edgePoint(f, t.x + t.w / 2, t.y + t.h / 2), z = edgePoint(t, f.x + f.w / 2, f.y + f.h / 2);
-                const len = Math.hypot(z.x - a.x, z.y - a.y) || 1;
-                const cx = (a.x + z.x) / 2 - ((z.y - a.y) / len) * len * 0.2, cy = (a.y + z.y) / 2 + ((z.x - a.x) / len) * len * 0.2;
-                const d = `M${a.x} ${a.y} Q${cx} ${cy} ${z.x} ${z.y}`;
+                const d = relD(byId[r.from], byId[r.to]);
                 return (
                   <g key={r.id}>
                     <path className={`rel${relSel === r.id ? " sel" : ""}`} d={d} markerEnd="url(#arr)" />
