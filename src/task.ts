@@ -20,3 +20,10 @@ export const progressMarker = (pct: number) =>
   Object.entries(XM_PROGRESS).reduce((best, e) => (Math.abs(e[1] - pct) < Math.abs(XM_PROGRESS[best] - pct) ? e[0] : best), "task-start");
 
 export const progressText = (pct: number) => (pct >= 100 ? "✓" : `${Math.round(pct)}%`);
+
+/** Priority and progress from XMind marker ids; other markers (flags, symbols…) are ignored. */
+export function fromMarkers(ids: string[]): { priority?: number; progress?: number } {
+  const prio = ids.map((id) => /^priority-(\d)$/.exec(id)?.[1]).find(Boolean);
+  const prog = ids.find((id) => id in XM_PROGRESS);
+  return { ...(prio ? { priority: Number(prio) } : {}), ...(prog ? { progress: XM_PROGRESS[prog] } : {}) };
+}

@@ -38,7 +38,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Other XMind structures (matrix, timeline) and legacy XML-only `.xmind` files.
+Other XMind structures (matrix, timeline), and floating topics, relationships and styles from imported XMind 8 files.
 
 ## Added
 
@@ -69,3 +69,5 @@ Structures: the toolbar picker offers Logic (right), Map (both sides), Org chart
 Text style: the panel's Text section (and ⌘B / ⌘I) sets bold, italic, strikethrough and a text colour on the selected topics. With the cursor in a topic (or in the notes) the same controls style just the selected words; otherwise they style the whole topic. Notes are now a small rich editor too (plain text underneath, so search still works). Per-word style is saved with the map and shows in PNG / PDF export, but `.xmind` export writes plain text for titles and notes (topic-level style is still exported). The style is kept in PNG / PDF export and in `.xmind` files (as XMind's `fo:font-weight`, `fo:font-style`, `fo:text-decoration` and `fo:color` properties; I have not checked it against a file made by XMind itself). Colours read from files must be plain `#rrggbb`.
 
 Fishbone: the central topic is the head on the right; top-level topics alternate above and below the spine on slanted bones, with their sub-topics as ribs along each bone and deeper levels hanging to the left of their parent. Arrow keys walk the bones in reading order (← towards the tail, → towards the head). The head is always on the right (XMind's right-headed fishbone).
+
+Old XMind files: `.xmind` files saved by XMind 8 and earlier (XML inside, `content.xml`) now open too, with every sheet's title, structure, topics, notes, links, folding and priority / progress markers. Floating topics, relationships, styles and other markers in those files are dropped. Files from newer XMind (JSON inside) are read as before, and take precedence when a file has both. The reader is strict by design: XML with a DOCTYPE is refused.

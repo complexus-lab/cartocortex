@@ -1,5 +1,6 @@
 import { Node } from "./model";
-import { XM_PROGRESS, progressMarker } from "./task";
+import { fromMarkers, progressMarker } from "./task";
+import { layoutOf, sheetsFromXml } from "./xmindxml";
 import { hex } from "./textstyle";
 
 // .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
@@ -23,7 +24,7 @@ const crc32 = (b: Uint8Array) => {
   return (c ^ 0xffffffff) >>> 0;
 };
 
-function zip(files: Record<string, string>): Uint8Array {
+export function zip(files: Record<string, string>): Uint8Array {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
@@ -120,8 +121,6 @@ const toX = (n: Node): XTopic => ({
 const fromX = (t: XTopic): Node => {
   const children = (t.children?.attached ?? []).map(fromX);
   const ids = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
-  const prio = ids.map((id) => /^priority-(\d)$/.exec(id)?.[1]).find(Boolean);
-  const prog = ids.find((id) => id in XM_PROGRESS);
   const sp = t.style?.properties ?? {};
   const color = hex(sp["fo:color"]?.slice(0, 7)); // XMind may append an alpha pair
   return {
@@ -129,8 +128,7 @@ const fromX = (t: XTopic): Node => {
     text: t.title ?? "",
     children,
     ...(t.href ? { link: t.href } : {}),
-    ...(prio ? { priority: Number(prio) } : {}),
-    ...(prog ? { progress: XM_PROGRESS[prog] } : {}),
+    ...fromMarkers(ids),
     ...(sp["fo:font-weight"] === "bold" ? { bold: true } : {}),
     ...(sp["fo:font-style"] === "italic" ? { italic: true } : {}),
     ...(sp["fo:text-decoration"]?.includes("line-through") ? { strike: true } : {}),
@@ -171,18 +169,19 @@ export function exportXmind(roots: Node | Node[]): Uint8Array {
 
 /** Imports every sheet as a root topic (sheet title kept). Markers, styles and relationships are dropped. */
 export async function importXmindSheets(bytes: Uint8Array): Promise<Node[]> {
-  const content = (await unzip(bytes)).get("content.json");
-  if (!content) throw new Error("no content.json (legacy .xmind files are not supported)");
+  const files = await unzip(bytes);
+  const content = files.get("content.json"); // XMind Zen and later; it wins over the placeholder content.xml those files also carry
+  if (!content) {
+    const xml = files.get("content.xml"); // XMind 8 and earlier
+    if (!xml) throw new Error("no content.json or content.xml (not an XMind file)");
+    return sheetsFromXml(dec.decode(xml));
+  }
   const roots = (JSON.parse(dec.decode(content)) as XSheet[])
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
       const root = fromX(sh.rootTopic!);
-      const sc = sh.rootTopic!.structureClass ?? "";
-      // Other structures (matrix, timeline…) come in as the default logic chart. Fishbone keeps its head on the right.
-      if (sc.includes("fishbone")) root.layout = "fish";
-      else if (sc.includes("org-chart")) root.layout = "down";
-      else if (sc.includes("tree")) root.layout = "tree";
-      else if (sc.includes("map")) root.layout = "map";
+      const layout = layoutOf(sh.rootTopic!.structureClass ?? ""); // matrix, timeline… stay the default logic chart
+      if (layout) root.layout = layout;
       if (sh.title) root.title = sh.title;
       return root;
     });
