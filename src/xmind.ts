@@ -1,0 +1,132 @@
+import { Node } from "./model";
+
+// .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
+// read accepts stored and deflate. Legacy XML-only files are not supported.
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+const CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+const crc32 = (b: Uint8Array) => {
+  let c = 0xffffffff;
+  for (const x of b) c = CRC[(c ^ x) & 255] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+};
+
+function zip(files: Record<string, string>): Uint8Array {
+  const local: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const nameB = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(12, 33, true); // dos date: 1980-01-01
+    lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, nameB.length, true);
+    local.push(new Uint8Array(lh.buffer), nameB, data);
+
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(14, 33, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+    ch.setUint16(28, nameB.length, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameB);
+    offset += 30 + nameB.length + data.length;
+  }
+  const cdSize = central.reduce((s, p) => s + p.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  const n = Object.keys(files).length;
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, n, true); end.setUint16(10, n, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  const parts = [...local, ...central, new Uint8Array(end.buffer)];
+  const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0));
+  let at = 0;
+  for (const p of parts) (out.set(p, at), (at += p.length));
+  return out;
+}
+
+const inflate = async (b: Uint8Array) =>
+  new Uint8Array(await new Response(new Blob([b as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+
+async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  let e = b.length - 22;
+  while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("not a zip file");
+  const count = v.getUint16(e + 10, true);
+  let p = v.getUint32(e + 16, true);
+  const out = new Map<string, Uint8Array>();
+  for (let i = 0; i < count; i++) {
+    const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true);
+    const nlen = v.getUint16(p + 28, true), elen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
+    const lo = v.getUint32(p + 42, true);
+    const name = dec.decode(b.subarray(p + 46, p + 46 + nlen));
+    const start = lo + 30 + v.getUint16(lo + 26, true) + v.getUint16(lo + 28, true);
+    const raw = b.subarray(start, start + csize);
+    if (method !== 0 && method !== 8) throw new Error(`unsupported zip method ${method}`);
+    out.set(name, method === 8 ? await inflate(raw) : raw);
+    p += 46 + nlen + elen + clen;
+  }
+  return out;
+}
+
+type XTopic = {
+  id: string; class?: string; title?: string; href?: string; branch?: string; structureClass?: string;
+  notes?: { plain?: { content?: string } };
+  children?: { attached?: XTopic[] };
+};
+
+const toX = (n: Node): XTopic => ({
+  id: n.id,
+  class: "topic",
+  title: n.text,
+  ...(n.link ? { href: n.link } : {}),
+  ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
+  ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
+  ...(n.children.length ? { children: { attached: n.children.map(toX) } } : {}),
+});
+
+const fromX = (t: XTopic): Node => {
+  const children = (t.children?.attached ?? []).map(fromX);
+  return {
+    id: crypto.randomUUID(),
+    text: t.title ?? "",
+    children,
+    ...(t.href ? { link: t.href } : {}),
+    ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
+    ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
+  };
+};
+
+export function exportXmind(root: Node): Uint8Array {
+  const rootTopic = {
+    ...toX(root),
+    structureClass: root.layout === "map" ? "org.xmind.ui.map.clockwise" : "org.xmind.ui.logic.right",
+  };
+  const sheet = { id: crypto.randomUUID(), class: "sheet", title: "Sheet 1", rootTopic };
+  return zip({
+    "content.json": JSON.stringify([sheet]),
+    "metadata.json": "{}",
+    "manifest.json": JSON.stringify({ "file-entries": { "content.json": {}, "metadata.json": {} } }),
+  });
+}
+
+/** Imports the first sheet's root topic. Markers, styles and relationships are dropped. */
+export async function importXmind(bytes: Uint8Array): Promise<Node> {
+  const content = (await unzip(bytes)).get("content.json");
+  if (!content) throw new Error("no content.json (legacy .xmind files are not supported)");
+  const topic = (JSON.parse(dec.decode(content)) as { rootTopic: XTopic }[])[0]?.rootTopic;
+  if (!topic) throw new Error("no sheet found");
+  const root = fromX(topic);
+  if (topic.structureClass?.includes("map")) root.layout = "map";
+  return root;
+}

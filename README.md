@@ -1,4 +1,4 @@
-# Mindmap
+# Cartocortex
 
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
@@ -38,4 +38,8 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Themes, icons and notes, relationship lines, boundaries, `.xmind` import/export, and multi-select.
+Multi-select, summaries, floating topics, multiple sheets, outline view, PNG/PDF export, clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
+
+## Added
+
+Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (first sheet; text, notes, links, folding and structure only).

@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Node, addChild, addSibling, findNode, layout, mk, moveTo, neighbour, parentOf, remove, rename, toMarkdown, toggle,
+  Box, Node, addChild, addSibling, clone, findNode, layout, mk, moveTo, neighbour, parentOf, patch, remove, rename,
+  search, toMarkdown, toggle, visibleIds,
 } from "./model";
+import { exportXmind, importXmind } from "./xmind";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
+
+const THEMES: Record<string, { name: string; root: string; accent: string; palette: string[] }> = {
+  classic: { name: "Classic", root: "#3b6cff", accent: "#3b6cff", palette: ["#e8590c", "#2f9e44", "#1c7ed6", "#ae3ec9", "#f08c00", "#0c8599"] },
+  ocean: { name: "Ocean", root: "#0b6e99", accent: "#0b6e99", palette: ["#1098ad", "#3b5bdb", "#1971c2", "#0ca678", "#7048e8", "#15aabf"] },
+  forest: { name: "Forest", root: "#2b8a3e", accent: "#2b8a3e", palette: ["#5c940d", "#2f9e44", "#099268", "#e67700", "#a61e4d", "#4263eb"] },
+  sunset: { name: "Sunset", root: "#d9480f", accent: "#d9480f", palette: ["#f03e3e", "#f76707", "#fab005", "#d6336c", "#ae3ec9", "#e8590c"] },
+  mono: { name: "Mono", root: "#343a40", accent: "#343a40", palette: ["#495057", "#868e96", "#6c757d", "#343a40", "#adb5bd", "#212529"] },
+};
+const ICONS = ["⭐", "❗", "❓", "✅", "❌", "💡", "🔥", "🚩", "⚠️", "❤️"];
+const SHAPES = [["round", "Round"], ["rect", "Box"], ["line", "Line"]] as const;
 
 const KEY = "mindmap.autosave";
 const load = (): Node => {
@@ -16,15 +28,16 @@ const load = (): Node => {
 
 const isTauri = "__TAURI_INTERNALS__" in window;
 
-async function saveFile(name: string, ext: string, content: string) {
+async function saveFile(name: string, ext: string, content: string | Uint8Array) {
+  const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
   if (isTauri) {
     const { save } = await import("@tauri-apps/plugin-dialog");
-    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    const { writeFile } = await import("@tauri-apps/plugin-fs");
     const path = await save({ defaultPath: name, filters: [{ name: ext, extensions: [ext] }] });
-    if (path) await writeTextFile(path, content);
+    if (path) await writeFile(path, bytes);
   } else {
     const a = Object.assign(document.createElement("a"), {
-      href: URL.createObjectURL(new Blob([content])),
+      href: URL.createObjectURL(new Blob([bytes as BlobPart])),
       download: name,
     });
     a.click();
@@ -32,18 +45,28 @@ async function saveFile(name: string, ext: string, content: string) {
   }
 }
 
-async function openFile(): Promise<string | null> {
+async function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> {
   if (isTauri) {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const { readTextFile } = await import("@tauri-apps/plugin-fs");
-    const path = await open({ filters: [{ name: "json", extensions: ["json"] }] });
-    return typeof path === "string" ? readTextFile(path) : null;
+    const { readFile } = await import("@tauri-apps/plugin-fs");
+    const path = await open({ filters: [{ name: "Mind map", extensions: ["json", "xmind"] }] });
+    return typeof path === "string" ? { name: path, bytes: await readFile(path) } : null;
   }
   return new Promise((res) => {
-    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json" });
-    i.onchange = () => (i.files?.[0] ? i.files[0].text().then(res) : res(null));
+    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind" });
+    i.onchange = async () => {
+      const f = i.files?.[0];
+      res(f ? { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) } : null);
+    };
     i.click();
   });
+}
+
+/** Point on box `b`'s border in the direction of (tx, ty). */
+function edgePoint(b: Box, tx: number, ty: number) {
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
+  const s = Math.min(dx ? b.w / 2 / Math.abs(dx) : Infinity, dy ? b.h / 2 / Math.abs(dy) : Infinity);
+  return { x: cx + dx * s, y: cy + dy * s };
 }
 
 export default function App() {
@@ -52,10 +75,28 @@ export default function App() {
     return { root, past: [], future: [], sel: root.id, edit: null };
   });
   const [view, setView] = useState({ x: 80, y: Math.round(window.innerHeight / 2) - 40, k: 1 });
+  const [panel, setPanel] = useState(true);
+  const [linking, setLinking] = useState(false);
+  const [relSel, setRelSel] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [hit, setHit] = useState(-1);
+  const [doc, setDoc] = useState(0); // bumps when a different document is loaded
   const stage = useRef<HTMLDivElement>(null);
+  const searchBox = useRef<HTMLInputElement>(null);
+  const clip = useRef<Node | null>(null);
 
+  const theme = THEMES[s.root.theme ?? "classic"] ?? THEMES.classic;
   const boxes = useMemo(() => layout(s.root), [s.root]);
   const byId = useMemo(() => Object.fromEntries(boxes.map((b) => [b.id, b])), [boxes]);
+  const byNode = useMemo(() => {
+    const m: Record<string, Node> = {};
+    const walk = (n: Node) => ((m[n.id] = n), n.children.forEach(walk));
+    walk(s.root);
+    return m;
+  }, [s.root]);
+  const hits = useMemo(() => search(s.root, q).filter((id) => byId[id]), [s.root, q, byId]);
+  const colorOf = (b: Box) => byNode[b.id].color ?? (b.branch < 0 ? theme.root : theme.palette[b.branch % theme.palette.length]);
+  const selNode = byNode[s.sel];
 
   useEffect(() => {
     try {
@@ -71,6 +112,8 @@ export default function App() {
       const root = fn(p.root);
       return root === p.root ? p : { root, past: [...p.past, p.root], future: [], sel: sel ?? p.sel, edit };
     });
+  const setNode = (p: Partial<Node>) => commit((r) => patch(r, s.sel, p));
+  const setDocProp = (p: Partial<Node>) => commit((r) => patch(r, r.id, p));
 
   const undo = () =>
     setS((p) => {
@@ -94,42 +137,94 @@ export default function App() {
     commit((r) => addSibling(r, s.sel, n), n.id, n.id);
   };
   const del = () => {
+    if (relSel) {
+      commit((r) => patch(r, r.id, { rels: (r.rels ?? []).filter((x) => x.id !== relSel) }));
+      return setRelSel(null);
+    }
     const p = parentOf(s.root, s.sel);
     if (p) commit((r) => remove(r, s.sel), p.id);
   };
+  const copy = () => void (clip.current = selNode);
+  const paste = () => {
+    if (!clip.current) return;
+    const n = clone(clip.current);
+    commit((r) => addChild(r, s.sel, n), n.id);
+  };
+  const duplicate = () => {
+    const n = clone(selNode);
+    commit((r) => addSibling(r, s.sel, n), n.id);
+  };
+  const toggleBound = () =>
+    commit((r) => {
+      const b = r.bounds ?? [];
+      return patch(r, r.id, { bounds: b.includes(s.sel) ? b.filter((x) => x !== s.sel) : [...b, s.sel] });
+    });
+  const linkTo = (to: string) => {
+    commit((r) => patch(r, r.id, { rels: [...(r.rels ?? []), { id: crypto.randomUUID(), from: s.sel, to }] }));
+    setLinking(false);
+  };
+
+  const fileName = (ext: string) => `${s.root.text.replace(/[\\/:*?"<>|]/g, "_") || "cartocortex"}.${ext}`;
+  const saveJson = () => saveFile(fileName("json"), "json", JSON.stringify(s.root, null, 2));
   const open = async () => {
-    const text = await openFile();
-    if (!text) return;
+    const f = await openFile();
+    if (!f) return;
     try {
-      const root = JSON.parse(text) as Node;
-      if (typeof root.id !== "string" || !Array.isArray(root.children)) throw new Error("not a mindmap file");
+      const root: Node = /\.xmind$/i.test(f.name) ? await importXmind(f.bytes) : JSON.parse(new TextDecoder().decode(f.bytes));
+      if (typeof root.id !== "string" || !Array.isArray(root.children)) throw new Error("not a Cartocortex file");
       setS({ root, past: [], future: [], sel: root.id, edit: null });
+      setDoc((d) => d + 1);
     } catch (e) {
       alert(`Could not open file: ${(e as Error).message}`);
     }
   };
 
+  const fit = () => {
+    const el = stage.current;
+    if (!el || !boxes.length) return;
+    const x0 = Math.min(...boxes.map((b) => b.x)), x1 = Math.max(...boxes.map((b) => b.x + b.w));
+    const y0 = Math.min(...boxes.map((b) => b.y)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
+    const k = Math.min(1.5, (el.clientWidth - 100) / (x1 - x0), (el.clientHeight - 100) / (y1 - y0));
+    setView({ k, x: (el.clientWidth - (x1 - x0) * k) / 2 - x0 * k, y: (el.clientHeight - (y1 - y0) * k) / 2 - y0 * k });
+  };
+  useEffect(fit, [doc, s.root.layout]);
+
+  const nextHit = () => {
+    if (!hits.length) return;
+    const i = (hit + 1) % hits.length;
+    setHit(i);
+    setS((p) => ({ ...p, sel: hits[i] }));
+  };
+
   // Keyboard-first editing (XMind-style).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (s.edit) return; // the input handles its own keys
       const mod = e.metaKey || e.ctrlKey;
-      const k = e.key;
+      const k = e.key.toLowerCase();
+      if (mod && k === "f") return void (e.preventDefault(), searchBox.current?.focus());
+      if (s.edit || (e.target as HTMLElement).closest("input,textarea,select")) return; // fields handle their own keys
       const go = (dir: "left" | "right" | "up" | "down") => setS((p) => ({ ...p, sel: neighbour(p.root, layout(p.root), p.sel, dir) }));
-      if (mod && k === "z") return void (e.preventDefault(), e.shiftKey ? redo() : undo());
-      if (mod && k === "s") return void (e.preventDefault(), saveFile("mindmap.json", "json", JSON.stringify(s.root, null, 2)));
-      if (mod || e.altKey) return;
+      if (mod) {
+        const m: Record<string, () => void> = {
+          z: e.shiftKey ? redo : undo, s: saveJson, o: open, c: copy, v: paste, d: duplicate,
+          x: () => (copy(), del()),
+        };
+        if (m[k] && !e.altKey) (e.preventDefault(), m[k]());
+        return;
+      }
+      if (e.altKey) return;
       const actions: Record<string, () => void> = {
-        Tab: newChild,
-        Enter: newSibling,
+        tab: newChild,
+        enter: newSibling,
         " ": () => setS((p) => ({ ...p, edit: p.sel })),
-        F2: () => setS((p) => ({ ...p, edit: p.sel })),
-        Delete: del,
-        Backspace: del,
-        ArrowLeft: () => go("left"),
-        ArrowRight: () => go("right"),
-        ArrowUp: () => go("up"),
-        ArrowDown: () => go("down"),
+        f2: () => setS((p) => ({ ...p, edit: p.sel })),
+        delete: del,
+        backspace: del,
+        escape: () => (setLinking(false), setRelSel(null)),
+        arrowleft: () => go("left"),
+        arrowright: () => go("right"),
+        arrowup: () => go("up"),
+        arrowdown: () => go("down"),
       };
       if (actions[k]) (e.preventDefault(), actions[k]());
     };
@@ -173,10 +268,14 @@ export default function App() {
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     setS((p) => ({ ...p, edit: null }));
+    setRelSel(null);
   };
 
+  const rels = (s.root.rels ?? []).filter((r) => byId[r.from] && byId[r.to]);
+  const bounds = (s.root.bounds ?? []).filter((id) => byId[id]);
+
   return (
-    <div className="app">
+    <div className="app" style={{ "--accent": theme.accent } as React.CSSProperties}>
       <div className="toolbar">
         <button onClick={newChild}>Child <kbd>Tab</kbd></button>
         <button onClick={newSibling}>Sibling <kbd>↵</kbd></button>
@@ -185,63 +284,153 @@ export default function App() {
         <button onClick={undo} disabled={!s.past.length}>Undo</button>
         <button onClick={redo} disabled={!s.future.length}>Redo</button>
         <span className="sep" />
+        <button className={linking ? "on" : ""} onClick={() => setLinking(!linking)} title="Click this, then click the target topic">
+          {linking ? "Pick target…" : "Relationship"}
+        </button>
+        <button className={s.root.bounds?.includes(s.sel) ? "on" : ""} onClick={toggleBound}>Boundary</button>
+        <span className="sep" />
+        <select value={s.root.layout ?? "right"} onChange={(e) => setDocProp({ layout: e.target.value as Node["layout"] })} title="Structure">
+          <option value="right">Logic (right)</option>
+          <option value="map">Map (both sides)</option>
+        </select>
+        <select value={s.root.theme ?? "classic"} onChange={(e) => setDocProp({ theme: e.target.value })} title="Theme">
+          {Object.entries(THEMES).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}
+        </select>
+        <input
+          ref={searchBox}
+          className="search"
+          placeholder={`Find ⌘F${q ? ` (${hits.length})` : ""}`}
+          value={q}
+          onChange={(e) => (setQ(e.target.value), setHit(-1))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") nextHit();
+            if (e.key === "Escape") (setQ(""), e.currentTarget.blur());
+          }}
+        />
+        <span className="sep" />
         <button onClick={open}>Open…</button>
-        <button onClick={() => saveFile("mindmap.json", "json", JSON.stringify(s.root, null, 2))}>Save…</button>
-        <button onClick={() => saveFile("mindmap.md", "md", toMarkdown(s.root))}>Export MD</button>
-        <button onClick={() => setView({ x: 80, y: Math.round(window.innerHeight / 2) - 40, k: 1 })}>Reset view</button>
+        <button onClick={saveJson}>Save…</button>
+        <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(s.root))}>Export XMind</button>
+        <button onClick={() => saveFile(fileName("md"), "md", toMarkdown(s.root))}>Export MD</button>
+        <button onClick={fit}>Fit</button>
+        <button className={panel ? "on" : ""} onClick={() => setPanel(!panel)}>Panel</button>
       </div>
-      <div className="stage" ref={stage} onPointerDown={pan}>
-        <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-          <svg className="edges">
-            {boxes.filter((b) => b.parent).map((b) => {
-              const p = byId[b.parent!];
-              const x0 = p.x + p.w, y0 = p.y + p.h / 2, x1 = b.x, y1 = b.y + b.h / 2, mx = (x0 + x1) / 2;
-              return <path key={b.id} d={`M${x0} ${y0} C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`} />;
+      <div className="main">
+        <div className="stage" ref={stage} onPointerDown={pan}>
+          <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+            {bounds.map((id) => {
+              const bs = visibleIds(byNode[id]).map((x) => byId[x]);
+              const x0 = Math.min(...bs.map((b) => b.x)) - 12, y0 = Math.min(...bs.map((b) => b.y)) - 12;
+              const x1 = Math.max(...bs.map((b) => b.x + b.w)) + 12, y1 = Math.max(...bs.map((b) => b.y + b.h)) + 12;
+              return <div key={id} className="bound" style={{ left: x0, top: y0, width: x1 - x0, height: y1 - y0, "--c": colorOf(byId[id]) } as React.CSSProperties} />;
             })}
-          </svg>
-          {boxes.map((b) => {
-            const n = findNode(s.root, b.id)!;
-            return (
-              <div
-                key={b.id}
-                className={`node${b.depth === 0 ? " root" : ""}${s.sel === b.id ? " sel" : ""}`}
-                style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
-                draggable={b.depth > 0 && s.edit !== b.id}
-                onPointerDown={(e) => (e.stopPropagation(), setS((p) => ({ ...p, sel: b.id, edit: p.edit === b.id ? p.edit : null })))}
-                onDoubleClick={() => setS((p) => ({ ...p, edit: b.id }))}
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", b.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => commit((r) => moveTo(r, e.dataTransfer.getData("text/plain"), b.id), e.dataTransfer.getData("text/plain"))}
-              >
-                {s.edit === b.id ? (
-                  <input
-                    autoFocus
-                    defaultValue={n.text}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={(e) => commit((r) => rename(r, b.id, e.target.value))}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      if (e.key === "Escape") setS((p) => ({ ...p, edit: null }));
-                    }}
-                  />
-                ) : (
-                  <span>{n.text || "…"}</span>
-                )}
-                {n.children.length > 0 && (
-                  <button
-                    className="fold"
-                    title={n.collapsed ? "Expand" : "Collapse"}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => commit((r) => toggle(r, b.id))}
-                  >
-                    {n.collapsed ? n.children.length : "‹"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
+            <svg className="edges">
+              <defs>
+                <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                  <path d="M0 0L10 5L0 10z" style={{ fill: "var(--muted)", stroke: "none" }} />
+                </marker>
+              </defs>
+              {boxes.filter((b) => b.parent).map((b) => {
+                const p = byId[b.parent!];
+                const left = b.side === -1;
+                const x0 = left ? p.x : p.x + p.w, y0 = p.y + p.h / 2, x1 = left ? b.x + b.w : b.x, y1 = b.y + b.h / 2, mx = (x0 + x1) / 2;
+                return <path key={b.id} style={{ stroke: colorOf(b) }} d={`M${x0} ${y0} C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`} />;
+              })}
+              {rels.map((r) => {
+                const f = byId[r.from], t = byId[r.to];
+                const a = edgePoint(f, t.x + t.w / 2, t.y + t.h / 2), z = edgePoint(t, f.x + f.w / 2, f.y + f.h / 2);
+                const len = Math.hypot(z.x - a.x, z.y - a.y) || 1;
+                const cx = (a.x + z.x) / 2 - ((z.y - a.y) / len) * len * 0.2, cy = (a.y + z.y) / 2 + ((z.x - a.x) / len) * len * 0.2;
+                const d = `M${a.x} ${a.y} Q${cx} ${cy} ${z.x} ${z.y}`;
+                return (
+                  <g key={r.id}>
+                    <path className={`rel${relSel === r.id ? " sel" : ""}`} d={d} markerEnd="url(#arr)" />
+                    <path className="rel-hit" d={d} onPointerDown={(e) => (e.stopPropagation(), setRelSel(r.id))} />
+                  </g>
+                );
+              })}
+            </svg>
+            {boxes.map((b) => {
+              const n = byNode[b.id];
+              return (
+                <div
+                  key={b.id}
+                  className={`node${b.depth === 0 ? " root" : ""}${s.sel === b.id ? " sel" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""} shape-${n.shape ?? "round"}`}
+                  style={{ left: b.x, top: b.y, width: b.w, height: b.h, "--c": colorOf(b) } as React.CSSProperties}
+                  draggable={b.depth > 0 && s.edit !== b.id}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setRelSel(null);
+                    if (linking && b.id !== s.sel) return linkTo(b.id);
+                    setS((p) => ({ ...p, sel: b.id, edit: p.edit === b.id ? p.edit : null }));
+                  }}
+                  onDoubleClick={() => setS((p) => ({ ...p, edit: b.id }))}
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", b.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => commit((r) => moveTo(r, e.dataTransfer.getData("text/plain"), b.id), e.dataTransfer.getData("text/plain"))}
+                >
+                  {n.icon && <span className="mark">{n.icon}</span>}
+                  {s.edit === b.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={n.text}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => (e.target.value === n.text ? setS((p) => ({ ...p, edit: null })) : commit((r) => rename(r, b.id, e.target.value)))}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setS((p) => ({ ...p, edit: null }));
+                      }}
+                    />
+                  ) : (
+                    <span>{n.text || "…"}</span>
+                  )}
+                  {n.note && <span className="badge" title={n.note}>📝</span>}
+                  {n.link && <span className="badge" title={n.link}>🔗</span>}
+                  {n.children.length > 0 && (
+                    <button
+                      className="fold"
+                      title={n.collapsed ? "Expand" : "Collapse"}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => commit((r) => toggle(r, b.id))}
+                    >
+                      {n.collapsed ? n.children.length : "‹"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+        {panel && (
+          <aside className="panel" key={s.sel}>
+            <h4>{selNode.text || "Topic"}</h4>
+            <label>Fill</label>
+            <div className="row">
+              {[...theme.palette, "#868e96", "#f1c40f"].map((c) => (
+                <button key={c} className={`sw${selNode.color === c ? " on" : ""}`} style={{ background: c }} onClick={() => setNode({ color: c })} />
+              ))}
+              <button onClick={() => setNode({ color: undefined })}>Auto</button>
+            </div>
+            <label>Shape</label>
+            <div className="row">
+              {SHAPES.map(([id, label]) => (
+                <button key={id} className={(selNode.shape ?? "round") === id ? "on" : ""} onClick={() => setNode({ shape: id })}>{label}</button>
+              ))}
+            </div>
+            <label>Marker</label>
+            <div className="row">
+              {ICONS.map((i) => (
+                <button key={i} className={selNode.icon === i ? "on" : ""} onClick={() => setNode({ icon: i })}>{i}</button>
+              ))}
+              <button onClick={() => setNode({ icon: undefined })}>None</button>
+            </div>
+            <label>Link</label>
+            <input defaultValue={selNode.link ?? ""} placeholder="https://…" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
+            <label>Notes</label>
+            <textarea defaultValue={selNode.note ?? ""} placeholder="Notes for this topic" onBlur={(e) => e.target.value !== (selNode.note ?? "") && setNode({ note: e.target.value || undefined })} />
+          </aside>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 :root {
   --bg: #f6f7f9; --panel: #fff; --ink: #1d2330; --muted: #6b7385; --line: #aeb6c6;
-  --accent: #3b6cff; --node: #fff; --root: #3b6cff; --root-ink: #fff;
+  --accent: #3b6cff; --node: #fff;
   font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--ink);
 }
@@ -10,18 +10,44 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
 .app { display: flex; flex-direction: column; height: 100%; }
-.toolbar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); z-index: 2; }
-.toolbar button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.toolbar button:hover:not(:disabled) { border-color: var(--accent); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); z-index: 2; }
+.toolbar button, .toolbar select, .panel button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.toolbar button:hover:not(:disabled), .panel button:hover { border-color: var(--accent); }
 .toolbar button:disabled { opacity: .4; cursor: default; }
+.toolbar button.on, .panel button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .toolbar kbd { color: var(--muted); font: inherit; font-size: 12px; margin-left: 4px; }
+.toolbar .search { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; width: 130px; }
 .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+
+.main { flex: 1; display: flex; min-height: 0; }
 .stage { flex: 1; position: relative; overflow: hidden; cursor: grab; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
 .edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; }
-.edges path { fill: none; stroke: var(--line); stroke-width: 2; }
-.node { position: absolute; display: flex; align-items: center; justify-content: center; padding: 0 12px; background: var(--node); border: 2px solid var(--line); border-radius: 17px; pointer-events: auto; cursor: pointer; user-select: none; white-space: nowrap; }
-.node.root { background: var(--root); color: var(--root-ink); border-color: var(--root); font-weight: 600; }
-.node.sel { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.edges path { fill: none; stroke: var(--line); stroke-width: 2; pointer-events: none; }
+.edges path.rel { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.edges path.rel.sel { stroke: var(--accent); stroke-width: 2.5; }
+.edges path.rel-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+
+.bound { position: absolute; border: 2px dashed var(--c); border-radius: 14px; background: color-mix(in srgb, var(--c) 8%, transparent); pointer-events: none; }
+.node { position: absolute; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 12px; background: var(--node); border: 2px solid var(--c, var(--line)); border-radius: 17px; pointer-events: auto; cursor: pointer; user-select: none; white-space: nowrap; }
+.node.filled { background: color-mix(in srgb, var(--c) 20%, var(--node)); }
+.node.root { background: var(--c); color: #fff; font-weight: 600; }
+.node.shape-rect { border-radius: 4px; }
+.node.shape-line { border-color: transparent; border-bottom-color: var(--c); border-radius: 0; background: transparent; }
+.node.root.shape-line { color: var(--ink); }
+.node.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.node.hit { box-shadow: 0 0 0 4px #ffd43b; }
 .node input { width: 100%; font: inherit; color: inherit; background: transparent; border: 0; outline: 0; text-align: center; }
+.mark, .badge { font-size: 13px; line-height: 1; }
 .fold { position: absolute; right: -10px; top: 50%; transform: translateY(-50%); min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; line-height: 16px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.node.left .fold { right: auto; left: -10px; }
+
+.panel { width: 250px; padding: 12px; overflow: auto; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.panel h4 { margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel label { margin-top: 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.panel .row { display: flex; flex-wrap: wrap; gap: 4px; }
+.panel .row button { padding: 2px 8px; }
+.panel .sw { width: 22px; height: 22px; padding: 0; border-radius: 50%; }
+.panel .sw.on { outline: 2px solid var(--ink); outline-offset: 1px; }
+.panel input, .panel textarea { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.panel textarea { min-height: 120px; resize: vertical; }
