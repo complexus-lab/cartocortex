@@ -110,3 +110,9 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .thumb { height: 22px; border-radius: 3px; object-fit: cover; cursor: zoom-in; flex: none; }
 .preview { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(30, 58, 95, .35); cursor: zoom-out; }
 .preview img { max-width: 85vw; max-height: 85vh; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 30px rgba(30, 58, 95, .3); }
+
+/* Custom theme colour pickers: round swatches in a row. */
+.panel .pick { display: inline-block; }
+.panel input[type="color"] { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: none; cursor: pointer; }
+.panel input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.panel input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 50%; }

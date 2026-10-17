@@ -7,6 +7,7 @@ import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
 import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
+import { customColors, customTheme } from "./theme";
 import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
@@ -94,6 +95,7 @@ export default function App() {
   const [summarizing, setSummarizing] = useState(false);
   const [pickingTopic, setPickingTopic] = useState(false); // choosing the target of a link to a topic
   const [preview, setPreview] = useState<string | null>(null); // a topic's picture shown full size
+  const [draft, setDraft] = useState<string[] | null>(null); // custom theme colours being edited, before they are saved
   const [sumSel, setSumSel] = useState<string | null>(null);
   const [sumEdit, setSumEdit] = useState<string | null>(null);
   const [present, setPresent] = useState<number | null>(null); // presentation step, null = off
@@ -108,7 +110,7 @@ export default function App() {
   const searchBox = useRef<HTMLInputElement>(null);
   const clip = useRef<Node | null>(null);
 
-  const theme = THEMES[s.root.theme ?? "classic"] ?? THEMES.classic;
+  const theme = s.root.theme === "custom" ? customTheme(draft ?? s.root.themeColors) : (THEMES[s.root.theme ?? "classic"] ?? THEMES.classic);
   const boxes = useMemo(() => layout(s.root), [s.root]);
   const byId = useMemo(() => Object.fromEntries(boxes.map((b) => [b.id, b])), [boxes]);
   const byNode = useMemo(() => {
@@ -297,6 +299,15 @@ export default function App() {
     if (isTauri) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().setTitle(title)).catch(() => {});
   }, [docPath, dirty]);
 
+  // Custom theme colours preview live; half a second after the last change they are saved as one undo step.
+  useEffect(() => {
+    if (!draft) return;
+    const id = setTimeout(() => {
+      setDocProp({ themeColors: draft });
+      setDraft(null);
+    }, 500);
+    return () => clearTimeout(id);
+  }, [draft]);
   const addImage = async () => {
     try {
       const file = await pickImage();
@@ -349,6 +360,7 @@ export default function App() {
     setSumSel(null);
     setRenaming(null);
     setDelAsk(null);
+    setDraft(null);
     setDoc((d) => d + 1);
   };
   const switchSheet = (to: number) => to !== sheets.cur && openSheet(to, park());
@@ -584,8 +596,18 @@ export default function App() {
           <option value="brace">Brace</option>
           <option value="matrix">Matrix</option>
         </select>
-        <select value={s.root.theme ?? "classic"} onChange={(e) => setDocProp({ theme: e.target.value })} title="Theme">
+        <select
+          value={s.root.theme ?? "classic"}
+          title="Theme"
+          onChange={(e) => {
+            const v = e.target.value;
+            setDraft(null);
+            // Choosing "Custom" starts from the colours you are looking at now.
+            setDocProp(v === "custom" && !s.root.themeColors ? { theme: v, themeColors: [theme.root, ...theme.palette.slice(0, 6)] } : { theme: v });
+          }}
+        >
           {Object.entries(THEMES).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}
+          <option value="custom">Custom…</option>
         </select>
         <input
           ref={searchBox}
@@ -847,6 +869,23 @@ export default function App() {
         {panel && (
           <aside className="panel" key={s.sel}>
             <h4>{multi ? `${ids.length} topics` : selNode.text || "Topic"}</h4>
+            {s.root.theme === "custom" && (
+              <>
+                <label>Custom theme colours</label>
+                <div className="row">
+                  {customColors(draft ?? s.root.themeColors).map((c, i) => (
+                    <span key={i} className="pick" title={i ? `Branch ${i}` : "Central topic and accent"}>
+                      <input
+                        type="color"
+                        aria-label={i ? `Branch ${i} colour` : "Central topic and accent colour"}
+                        value={c}
+                        onChange={(e) => setDraft(customColors(draft ?? s.root.themeColors).map((x, k) => (k === i ? e.target.value : x)))}
+                      />
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
             <label>Fill</label>
             <div className="row">
               {[...theme.palette, "#9fd3cf", "#8a9bb0"].map((c) => (

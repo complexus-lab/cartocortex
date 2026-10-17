@@ -26,6 +26,7 @@ export type Node = {
   // Document-level settings, only meaningful on the root node.
   layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
+  themeColors?: string[]; // the "custom" theme: central topic and accent, then six branch colours (#rrggbb)
   title?: string; // sheet name (tab label); falls back to the central topic text
   rels?: Rel[];
   bounds?: string[];
@@ -87,8 +88,8 @@ export function moveTo(root: Node, id: string, target: string): Node {
 
 /** Deep copy with fresh ids; document-level settings are not copied. */
 export const clone = (n: Node): Node => {
-  const { rels, bounds, summaries, layout, theme, title, float, ...rest } = n;
-  void rels, bounds, summaries, layout, theme, title, float;
+  const { rels, bounds, summaries, layout, theme, themeColors, title, float, ...rest } = n;
+  void rels, bounds, summaries, layout, theme, themeColors, title, float;
   return { ...rest, id: crypto.randomUUID(), children: n.children.map(clone) };
 };
 
