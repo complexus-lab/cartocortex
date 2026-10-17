@@ -57,3 +57,13 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .orow.sel { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .obullet { width: 16px; text-align: center; color: var(--muted); cursor: pointer; user-select: none; }
 .orow input { flex: 1; font: inherit; color: inherit; background: transparent; border: 0; outline: 0; padding: 4px 6px; }
+
+.edges path.sum { fill: none; stroke: var(--muted); stroke-width: 2; }
+.edges path.sum.sel { stroke: var(--accent); }
+.node.sumlabel { border-style: dashed; border-color: var(--muted); background: var(--panel); }
+.node.dim { opacity: .35; }
+.present .toolbar, .present .panel { display: none; }
+.present .world { transition: transform .5s ease; }
+.present .node, .present .stage { pointer-events: none; }
+.hud { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 6px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; z-index: 5; }
+.hud button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; cursor: pointer; }

@@ -6,6 +6,7 @@ import {
 import { exportXmind, importXmind } from "./xmind";
 import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
+import { addSummary, canSummarize, editSummary, removeSummary, summaryD, summaryGeo } from "./summary";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
 
@@ -73,6 +74,10 @@ export default function App() {
   const [panel, setPanel] = useState(true);
   const [mode, setMode] = useState<"map" | "outline">("map");
   const [linking, setLinking] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [sumSel, setSumSel] = useState<string | null>(null);
+  const [sumEdit, setSumEdit] = useState<string | null>(null);
+  const [present, setPresent] = useState<number | null>(null); // presentation step, null = off
   const [relSel, setRelSel] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [hit, setHit] = useState(-1);
@@ -93,6 +98,16 @@ export default function App() {
   const hits = useMemo(() => search(s.root, q).filter((id) => byId[id]), [s.root, q, byId]);
   const colorOf = (b: Box) => byNode[b.id].color ?? (b.branch < 0 ? theme.root : theme.palette[b.branch % theme.palette.length]);
   const selNode = byNode[s.sel];
+  const sums = useMemo(
+    () => (s.root.summaries ?? []).flatMap((x) => {
+      const g = summaryGeo(s.root, boxes, x);
+      return g ? [{ x, g }] : [];
+    }),
+    [s.root, boxes],
+  );
+  // Presenting reveals one top-level branch per step; the root is always shown.
+  const steps = (s.root.collapsed ? 0 : s.root.children.length) + 1;
+  const shown = (id: string) => present === null || (byId[id]?.branch ?? 0) < present;
 
   useEffect(() => {
     try {
@@ -133,6 +148,10 @@ export default function App() {
     commit((r) => addSibling(r, s.sel, n), n.id, n.id);
   };
   const del = () => {
+    if (sumSel) {
+      commit((r) => removeSummary(r, sumSel));
+      return setSumSel(null);
+    }
     if (relSel) {
       commit((r) => patch(r, r.id, { rels: (r.rels ?? []).filter((x) => x.id !== relSel) }));
       return setRelSel(null);
@@ -183,15 +202,35 @@ export default function App() {
     }
   };
 
-  const fit = () => {
+  const fitTo = (bs: Box[]) => {
     const el = stage.current;
-    if (!el || !el.clientWidth || !boxes.length) return; // hidden while the outline is showing
-    const x0 = Math.min(...boxes.map((b) => b.x)), x1 = Math.max(...boxes.map((b) => b.x + b.w));
-    const y0 = Math.min(...boxes.map((b) => b.y)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
+    if (!el || !el.clientWidth || !bs.length) return; // hidden while the outline is showing
+    const x0 = Math.min(...bs.map((b) => b.x)), x1 = Math.max(...bs.map((b) => b.x + b.w));
+    const y0 = Math.min(...bs.map((b) => b.y)), y1 = Math.max(...bs.map((b) => b.y + b.h));
     const k = Math.min(1.5, (el.clientWidth - 100) / (x1 - x0), (el.clientHeight - 100) / (y1 - y0));
     setView({ k, x: (el.clientWidth - (x1 - x0) * k) / 2 - x0 * k, y: (el.clientHeight - (y1 - y0) * k) / 2 - y0 * k });
   };
+  const fit = () => fitTo(boxes);
   useEffect(fit, [doc, s.root.layout]);
+
+  const startPresenting = () => {
+    setMode("map");
+    setPresent(0);
+    document.documentElement.requestFullscreen?.().catch(() => {}); // optional; some webviews refuse it
+  };
+  const stopPresenting = () => {
+    setPresent(null);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  };
+  // Camera follows the newest branch (plus the root) at each step.
+  useEffect(() => {
+    if (present !== null) fitTo(boxes.filter((b) => b.branch < 0 || b.branch === present - 1));
+  }, [present, boxes, mode]);
+  useEffect(() => {
+    const onFs = () => document.fullscreenElement || setPresent(null);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
 
   const nextHit = () => {
     if (!hits.length) return;
@@ -203,6 +242,14 @@ export default function App() {
   // Keyboard-first editing (XMind-style).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (present !== null) {
+        const next = ["ArrowRight", "ArrowDown", " ", "Enter", "PageDown"], prev = ["ArrowLeft", "ArrowUp", "Backspace", "PageUp"];
+        if (e.key === "Escape") stopPresenting();
+        else if (next.includes(e.key)) setPresent(Math.min(steps - 1, present + 1));
+        else if (prev.includes(e.key)) setPresent(Math.max(0, present - 1));
+        else return;
+        return e.preventDefault();
+      }
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
       if (mod && k === "f") return void (e.preventDefault(), searchBox.current?.focus());
@@ -224,7 +271,7 @@ export default function App() {
         f2: () => setS((p) => ({ ...p, edit: p.sel })),
         delete: del,
         backspace: del,
-        escape: () => (setLinking(false), setRelSel(null)),
+        escape: () => (setLinking(false), setSummarizing(false), setRelSel(null), setSumSel(null)),
         arrowleft: () => go("left"),
         arrowright: () => go("right"),
         arrowup: () => go("up"),
@@ -273,13 +320,14 @@ export default function App() {
     window.addEventListener("pointerup", up);
     setS((p) => ({ ...p, edit: null }));
     setRelSel(null);
+    setSumSel(null);
   };
 
-  const rels = (s.root.rels ?? []).filter((r) => byId[r.from] && byId[r.to]);
-  const bounds = (s.root.bounds ?? []).filter((id) => byId[id]);
+  const rels = (s.root.rels ?? []).filter((r) => byId[r.from] && byId[r.to] && shown(r.from) && shown(r.to));
+  const bounds = (s.root.bounds ?? []).filter((id) => byId[id] && shown(id));
 
   return (
-    <div className="app" style={{ "--accent": theme.accent } as React.CSSProperties}>
+    <div className={`app${present !== null ? " present" : ""}`} style={{ "--accent": theme.accent } as React.CSSProperties}>
       <div className="toolbar">
         <button onClick={newChild}>Child <kbd>Tab</kbd></button>
         <button onClick={newSibling}>Sibling <kbd>↵</kbd></button>
@@ -292,6 +340,9 @@ export default function App() {
           {linking ? "Pick target…" : "Relationship"}
         </button>
         <button className={s.root.bounds?.includes(s.sel) ? "on" : ""} onClick={toggleBound}>Boundary</button>
+        <button className={summarizing ? "on" : ""} onClick={() => setSummarizing(!summarizing)} title="Click this, then the last topic of the range (it must share a parent with the selected one)">
+          {summarizing ? "Pick range end…" : "Summary"}
+        </button>
         <span className="sep" />
         <select value={s.root.layout ?? "right"} onChange={(e) => setDocProp({ layout: e.target.value as Node["layout"] })} title="Structure">
           <option value="right">Logic (right)</option>
@@ -320,6 +371,7 @@ export default function App() {
         <button onClick={() => exportImage("pdf")}>PDF</button>
         <span className="sep" />
         <button className={mode === "outline" ? "on" : ""} onClick={() => setMode(mode === "map" ? "outline" : "map")}>Outline</button>
+        <button onClick={startPresenting}>Present</button>
         <button onClick={fit} disabled={mode === "outline"}>Fit</button>
         <button className={panel ? "on" : ""} onClick={() => setPanel(!panel)}>Panel</button>
       </div>
@@ -339,7 +391,7 @@ export default function App() {
                   <path d="M0 0L10 5L0 10z" style={{ fill: "var(--muted)", stroke: "none" }} />
                 </marker>
               </defs>
-              {boxes.filter((b) => b.parent).map((b) => {
+              {boxes.filter((b) => b.parent && shown(b.id)).map((b) => {
                 return <path key={b.id} style={{ stroke: colorOf(b) }} d={branchD(b, byId[b.parent!])} />;
               })}
               {rels.map((r) => {
@@ -351,18 +403,27 @@ export default function App() {
                   </g>
                 );
               })}
+              {sums.filter(({ x }) => shown(x.from) && shown(x.to)).map(({ x, g }) => (
+                <path key={x.id} className={`sum${sumSel === x.id ? " sel" : ""}`} d={summaryD(g)} />
+              ))}
             </svg>
-            {boxes.map((b) => {
+            {boxes.filter((b) => shown(b.id)).map((b) => {
               const n = byNode[b.id];
               return (
                 <div
                   key={b.id}
-                  className={`node${b.depth === 0 ? " root" : ""}${s.sel === b.id ? " sel" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""} shape-${n.shape ?? "round"}`}
+                  className={`node${b.depth === 0 ? " root" : ""}${s.sel === b.id ? " sel" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
                   style={{ left: b.x, top: b.y, width: b.w, height: b.h, "--c": colorOf(b) } as React.CSSProperties}
                   draggable={b.depth > 0 && s.edit !== b.id}
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     setRelSel(null);
+                    setSumSel(null);
+                    if (summarizing) {
+                      setSummarizing(false);
+                      if (canSummarize(s.root, s.sel, b.id)) commit((r) => addSummary(r, s.sel, b.id));
+                      return;
+                    }
                     if (linking && b.id !== s.sel) return linkTo(b.id);
                     setS((p) => ({ ...p, sel: b.id, edit: p.edit === b.id ? p.edit : null }));
                   }}
@@ -402,6 +463,31 @@ export default function App() {
                 </div>
               );
             })}
+            {sums.filter(({ x }) => shown(x.from) && shown(x.to)).map(({ x, g }) => (
+              <div
+                key={x.id}
+                className={`node sumlabel${sumSel === x.id ? " sel" : ""}`}
+                style={{ left: g.label.x, top: g.label.y, width: g.label.w, height: g.label.h }}
+                onPointerDown={(e) => (e.stopPropagation(), setSumSel(x.id), setRelSel(null))}
+                onDoubleClick={() => setSumEdit(x.id)}
+              >
+                {sumEdit === x.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={x.text}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={(e) => (setSumEdit(null), e.target.value !== x.text && commit((r) => editSummary(r, x.id, e.target.value)))}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      if (e.key === "Escape") setSumEdit(null);
+                    }}
+                  />
+                ) : (
+                  <span>{x.text || "…"}</span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
         {panel && (
@@ -434,6 +520,14 @@ export default function App() {
           </aside>
         )}
       </div>
+      {present !== null && (
+        <div className="hud">
+          <button onClick={() => setPresent(Math.max(0, present - 1))}>←</button>
+          <span>{present + 1} / {steps}</span>
+          <button onClick={() => setPresent(Math.min(steps - 1, present + 1))}>→</button>
+          <button onClick={stopPresenting}>Exit</button>
+        </div>
+      )}
     </div>
   );
 }

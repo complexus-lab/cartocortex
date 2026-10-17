@@ -1,4 +1,5 @@
 export type Rel = { id: string; from: string; to: string };
+export type Summary = { id: string; from: string; to: string; text: string };
 export type Shape = "round" | "rect" | "line";
 export type Node = {
   id: string;
@@ -15,6 +16,7 @@ export type Node = {
   theme?: string;
   rels?: Rel[];
   bounds?: string[];
+  summaries?: Summary[];
 };
 export type Box = {
   id: string; x: number; y: number; w: number; h: number;
@@ -68,8 +70,8 @@ export function moveTo(root: Node, id: string, target: string): Node {
 
 /** Deep copy with fresh ids; document-level settings are not copied. */
 export const clone = (n: Node): Node => {
-  const { rels, bounds, layout, theme, ...rest } = n;
-  void rels, bounds, layout, theme;
+  const { rels, bounds, summaries, layout, theme, ...rest } = n;
+  void rels, bounds, summaries, layout, theme;
   return { ...rest, id: crypto.randomUUID(), children: n.children.map(clone) };
 };
 
@@ -77,7 +79,7 @@ export const clone = (n: Node): Node => {
 export const visibleIds = (n: Node): string[] => [n.id, ...(n.collapsed ? [] : n.children.flatMap(visibleIds))];
 
 const H = 34, GAP_X = 56, GAP_Y = 12;
-const widthOf = (n: Node) =>
+export const widthOf = (n: Node) =>
   Math.max(56, [...n.text].length * 8.5 + 28 + (n.icon ? 22 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
 
 type Raw = Omit<Box, "side" | "branch">;

@@ -1,4 +1,5 @@
 import { Box, Node, findNode, visibleIds } from "./model";
+import { summaryD, summaryGeo } from "./summary";
 
 /** Point on box `b`'s border in the direction of (tx, ty). */
 export function edgePoint(b: Box, tx: number, ty: number) {
@@ -27,9 +28,14 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 /** Standalone light-theme SVG of the whole visible map. */
 export function mapSvg(root: Node, boxes: Box[], colorOf: (b: Box) => string) {
   const pad = 40;
-  const x0 = Math.min(...boxes.map((b) => b.x)) - pad, y0 = Math.min(...boxes.map((b) => b.y)) - pad;
-  const w = Math.ceil(Math.max(...boxes.map((b) => b.x + b.w)) + pad - x0);
-  const h = Math.ceil(Math.max(...boxes.map((b) => b.y + b.h)) + pad - y0);
+  const sums = (root.summaries ?? []).flatMap((s) => {
+    const g = summaryGeo(root, boxes, s);
+    return g ? [{ s, g }] : [];
+  });
+  const rects = [...boxes, ...sums.map(({ g }) => g.label)];
+  const x0 = Math.min(...rects.map((b) => b.x)) - pad, y0 = Math.min(...rects.map((b) => b.y)) - pad;
+  const w = Math.ceil(Math.max(...rects.map((b) => b.x + b.w)) + pad - x0);
+  const h = Math.ceil(Math.max(...rects.map((b) => b.y + b.h)) + pad - y0);
   const byId = Object.fromEntries(boxes.map((b) => [b.id, b]));
   const out: string[] = [];
 
@@ -55,6 +61,12 @@ export function mapSvg(root: Node, boxes: Box[], colorOf: (b: Box) => string) {
     }
     const label = [n.icon, n.text || "…", n.note ? "📝" : "", n.link ? "🔗" : ""].filter(Boolean).join(" ");
     out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${isRoot ? 600 : 400}" fill="${isRoot && shape !== "line" ? "#fff" : "#1d2330"}">${esc(label)}</text>`);
+  }
+  for (const { s, g } of sums) {
+    const l = g.label;
+    out.push(`<path d="${summaryD(g)}" fill="none" stroke="#6b7385" stroke-width="2"/>`);
+    out.push(`<rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${l.h / 2}" fill="#fff" stroke="#6b7385" stroke-width="2" stroke-dasharray="6 4"/>`);
+    out.push(`<text x="${l.x + l.w / 2}" y="${l.y + l.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#1d2330">${esc(s.text || "…")}</text>`);
   }
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x0} ${y0} ${w} ${h}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">` +
