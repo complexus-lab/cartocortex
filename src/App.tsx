@@ -7,6 +7,8 @@ import { exportXmind, importXmindSheets } from "./xmind";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
+import { normalizeUrl } from "./links";
+import { PRIORITIES, PROGRESS, prioColors } from "./task";
 import { addSummary, canSummarize, editSummary, removeSummary, siblingSpan, summaryD, summaryGeo } from "./summary";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
@@ -68,6 +70,14 @@ async function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> {
     };
     i.click();
   });
+}
+
+/** Open a topic link in the system browser. Only http(s) and mailto links are allowed. */
+async function openLink(raw: string) {
+  const url = normalizeUrl(raw);
+  if (!url) return alert(`This link cannot be opened: ${raw}`);
+  if (isTauri) await (await import("@tauri-apps/plugin-opener")).openUrl(url);
+  else window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export default function App() {
@@ -616,6 +626,16 @@ export default function App() {
                   }}
                 >
                   {n.icon && <span className="mark">{n.icon}</span>}
+                  {n.priority ? (
+                    <span className="prio" title={`Priority ${n.priority}`} style={{ background: prioColors(n.priority).bg, color: prioColors(n.priority).fg }}>
+                      {n.priority}
+                    </span>
+                  ) : null}
+                  {n.progress != null && (
+                    <span className="prog" title={`${n.progress}% done`} style={{ "--p": n.progress } as React.CSSProperties}>
+                      {n.progress >= 100 ? "✓" : ""}
+                    </span>
+                  )}
                   {s.edit === b.id ? (
                     <input
                       autoFocus
@@ -632,7 +652,11 @@ export default function App() {
                     <span>{n.text || "…"}</span>
                   )}
                   {n.note && <span className="badge" title={n.note}>📝</span>}
-                  {n.link && <span className="badge" title={n.link}>🔗</span>}
+                  {n.link && (
+                    <span className="badge link" title={`Open ${n.link}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), openLink(n.link!))}>
+                      🔗
+                    </span>
+                  )}
                   {n.children.length > 0 && (
                     <button
                       className="fold"
@@ -702,10 +726,25 @@ export default function App() {
               ))}
               <button onClick={() => setNode({ icon: undefined })}>None</button>
             </div>
+            <label>Priority</label>
+            <div className="row">
+              {PRIORITIES.map((p) => (
+                <button key={p} className={selNode.priority === p ? "on" : ""} onClick={() => setNode({ priority: p })}>{p}</button>
+              ))}
+              <button onClick={() => setNode({ priority: undefined })}>None</button>
+            </div>
+            <label>Progress</label>
+            <div className="row">
+              {PROGRESS.map((p) => (
+                <button key={p} className={selNode.progress === p ? "on" : ""} onClick={() => setNode({ progress: p })}>{p}%</button>
+              ))}
+              <button onClick={() => setNode({ progress: undefined })}>None</button>
+            </div>
             {!multi && (
               <>
             <label>Link</label>
             <input defaultValue={selNode.link ?? ""} placeholder="https://…" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
+            {selNode.link && <button onClick={() => openLink(selNode.link!)}>Open link ↗</button>}
             <label>Notes</label>
             <textarea defaultValue={selNode.note ?? ""} placeholder="Notes for this topic" onBlur={(e) => e.target.value !== (selNode.note ?? "") && setNode({ note: e.target.value || undefined })} />
               </>

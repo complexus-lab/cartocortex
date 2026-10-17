@@ -83,3 +83,9 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .tab .x, .tabs .add { font: inherit; color: var(--muted); background: transparent; border: 0; border-radius: 4px; padding: 0 4px; cursor: pointer; }
 .tab .x:hover, .tabs .add:hover { color: var(--accent); }
 .present .tabs { display: none; }
+
+/* Task markers: priority is a numbered disc (darker = more urgent), progress a pie that turns into a check at 100%. */
+.prio { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 700; line-height: 1; }
+.prog { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--teal); background: conic-gradient(var(--teal) calc(var(--p) * 1%), var(--tint20) 0); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
+.badge.link { cursor: pointer; }
+.badge.link:hover { transform: scale(1.2); }

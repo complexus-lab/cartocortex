@@ -10,6 +10,8 @@ export type Node = {
   icon?: string;
   note?: string;
   link?: string;
+  priority?: number; // task priority, 1 (most urgent) to 9
+  progress?: number; // task progress in percent
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
@@ -84,7 +86,7 @@ export const visibleIds = (n: Node): string[] => [n.id, ...(n.collapsed ? [] : n
 
 const H = 34, GAP_X = 56, GAP_Y = 12;
 export const widthOf = (n: Node) =>
-  Math.max(56, [...n.text].length * 8.5 + 28 + (n.icon ? 22 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
+  Math.max(56, [...n.text].length * 8.5 + 28 + (n.icon ? 22 : 0) + (n.priority ? 24 : 0) + (n.progress != null ? 24 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
 
 type Raw = Omit<Box, "side" | "branch">;
 

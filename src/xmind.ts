@@ -1,4 +1,5 @@
 import { Node } from "./model";
+import { XM_PROGRESS, progressMarker } from "./task";
 
 // .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
 // read accepts stored and deflate. Legacy XML-only files are not supported.
@@ -82,14 +83,21 @@ async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
 type XTopic = {
   id: string; class?: string; title?: string; href?: string; branch?: string; structureClass?: string;
   notes?: { plain?: { content?: string } };
+  markers?: { markerId: string }[];
   children?: { attached?: XTopic[] };
 };
+
+const markersOf = (n: Node) => [
+  ...(n.priority ? [{ markerId: `priority-${n.priority}` }] : []),
+  ...(n.progress != null ? [{ markerId: progressMarker(n.progress) }] : []),
+];
 
 const toX = (n: Node): XTopic => ({
   id: n.id,
   class: "topic",
   title: n.text,
   ...(n.link ? { href: n.link } : {}),
+  ...(markersOf(n).length ? { markers: markersOf(n) } : {}),
   ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
   ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
   ...(n.children.length ? { children: { attached: n.children.map(toX) } } : {}),
@@ -97,11 +105,16 @@ const toX = (n: Node): XTopic => ({
 
 const fromX = (t: XTopic): Node => {
   const children = (t.children?.attached ?? []).map(fromX);
+  const ids = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
+  const prio = ids.map((id) => /^priority-(\d)$/.exec(id)?.[1]).find(Boolean);
+  const prog = ids.find((id) => id in XM_PROGRESS);
   return {
     id: crypto.randomUUID(),
     text: t.title ?? "",
     children,
     ...(t.href ? { link: t.href } : {}),
+    ...(prio ? { priority: Number(prio) } : {}),
+    ...(prog ? { progress: XM_PROGRESS[prog] } : {}),
     ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
     ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
   };
