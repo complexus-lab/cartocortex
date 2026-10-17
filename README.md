@@ -1,5 +1,7 @@
 # Cartocortex
 
+A [Complexus Lab](https://github.com/complexus-lab) project. See [CONTRIBUTING.md](CONTRIBUTING.md) to help.
+
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
 Tabs and menus: the toolbar is three menus (File with templates, recent files and export; Insert; View with structure, theme and panels) plus Undo, Redo, Delete, Find and Save. Each map opens in its own tab (a blank tab is reused; Open… puts a map in a new tab when the current one holds a file or unsaved work); the second row of tabs is the sheets inside one map. Only the first tab keeps the autosave.
