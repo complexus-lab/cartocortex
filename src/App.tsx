@@ -10,6 +10,8 @@ import Outline from "./Outline";
 import { normalizeUrl } from "./links";
 import { PRIORITIES, PROGRESS, prioColors } from "./task";
 import { textStyle } from "./textstyle";
+import RichEdit from "./RichEdit";
+import { runStyle, validRuns } from "./rich";
 import { addSummary, canSummarize, editSummary, removeSummary, siblingSpan, summaryD, summaryGeo } from "./summary";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
@@ -154,6 +156,9 @@ export default function App() {
     });
   const setNode = (p: Partial<Node>) => commit((r) => patchAll(r, ids, p));
   const setDocProp = (p: Partial<Node>) => commit((r) => patch(r, r.id, p));
+  // With the cursor in a topic or in the notes, style the selected words (browser editing command); otherwise the whole topic.
+  const fmt = (cmd: string, topic: Partial<Node>, arg?: string) =>
+    (document.activeElement as HTMLElement | null)?.isContentEditable ? document.execCommand(cmd, false, arg) : setNode(topic);
 
   const undo = () =>
     setS((p) => {
@@ -324,7 +329,7 @@ export default function App() {
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
       if (mod && k === "f") return void (e.preventDefault(), searchBox.current?.focus());
-      if (s.edit || (e.target as HTMLElement).closest("input,textarea,select")) return; // fields handle their own keys
+      if (s.edit || (e.target as HTMLElement).closest("input,textarea,select,[contenteditable='true']")) return; // fields handle their own keys
       const go = (dir: "left" | "right" | "up" | "down") => setS((p) => ({ ...p, sel: neighbour(p.root, layout(p.root), p.sel, dir) }));
       if (mod) {
         const m: Record<string, () => void> = {
@@ -642,20 +647,18 @@ export default function App() {
                     </span>
                   )}
                   {s.edit === b.id ? (
-                    <input
+                    <RichEdit
                       autoFocus
-                      defaultValue={n.text}
-                    style={textStyle(n)}
-                      onFocus={(e) => e.target.select()}
-                      onBlur={(e) => (e.target.value === n.text ? setS((p) => ({ ...p, edit: null })) : commit((r) => rename(r, b.id, e.target.value)))}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                        if (e.key === "Escape") setS((p) => ({ ...p, edit: null }));
-                      }}
+                      text={n.text}
+                      runs={n.runs}
+                      style={textStyle(n)}
+                      onCommit={(text, runs, changed) => (changed ? commit((r) => patch(r, b.id, { text, runs })) : setS((p) => ({ ...p, edit: null })))}
+                      onCancel={() => setS((p) => ({ ...p, edit: null }))}
                     />
                   ) : (
-                    <span style={textStyle(n)}>{n.text || "…"}</span>
+                    <span style={textStyle(n)}>
+                      {validRuns(n.text, n.runs)?.map((r, k) => <span key={k} style={runStyle(r)}>{r.t}</span>) ?? (n.text || "…")}
+                    </span>
                   )}
                   {n.note && <span className="badge" title={n.note}>📝</span>}
                   {n.link && (
@@ -732,17 +735,17 @@ export default function App() {
               ))}
               <button onClick={() => setNode({ icon: undefined })}>None</button>
             </div>
-            <label>Text</label>
-            <div className="row">
-              <button className={selNode.bold ? "on" : ""} title="Bold (⌘B)" onClick={() => setNode({ bold: selNode.bold ? undefined : true })}><b>B</b></button>
-              <button className={selNode.italic ? "on" : ""} title="Italic (⌘I)" onClick={() => setNode({ italic: selNode.italic ? undefined : true })}><i>I</i></button>
-              <button className={selNode.strike ? "on" : ""} title="Strikethrough" onClick={() => setNode({ strike: selNode.strike ? undefined : true })}><s>S</s></button>
+            <label title="With the cursor in a topic or in the notes these style the selected words; otherwise the whole topic">Text</label>
+            <div className="row" onMouseDown={(e) => e.preventDefault() /* keep the editor's selection */}>
+              <button className={selNode.bold ? "on" : ""} title="Bold (⌘B)" onClick={() => fmt("bold", { bold: selNode.bold ? undefined : true })}><b>B</b></button>
+              <button className={selNode.italic ? "on" : ""} title="Italic (⌘I)" onClick={() => fmt("italic", { italic: selNode.italic ? undefined : true })}><i>I</i></button>
+              <button className={selNode.strike ? "on" : ""} title="Strikethrough" onClick={() => fmt("strikeThrough", { strike: selNode.strike ? undefined : true })}><s>S</s></button>
             </div>
-            <div className="row">
+            <div className="row" onMouseDown={(e) => e.preventDefault()}>
               {theme.palette.map((c) => (
-                <button key={c} className={`sw${selNode.textColor === c ? " on" : ""}`} style={{ background: c }} title="Text colour" onClick={() => setNode({ textColor: c })} />
+                <button key={c} className={`sw${selNode.textColor === c ? " on" : ""}`} style={{ background: c }} title="Text colour" onClick={() => fmt("foreColor", { textColor: c }, c)} />
               ))}
-              <button onClick={() => setNode({ textColor: undefined })}>Auto</button>
+              <button title="Remove the style" onClick={() => fmt("removeFormat", { textColor: undefined })}>Auto</button>
             </div>
             <label>Priority</label>
             <div className="row">
@@ -764,7 +767,14 @@ export default function App() {
             <input defaultValue={selNode.link ?? ""} placeholder="https://…" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
             {selNode.link && <button onClick={() => openLink(selNode.link!)}>Open link ↗</button>}
             <label>Notes</label>
-            <textarea defaultValue={selNode.note ?? ""} placeholder="Notes for this topic" onBlur={(e) => e.target.value !== (selNode.note ?? "") && setNode({ note: e.target.value || undefined })} />
+            <RichEdit
+              multiline
+              className="notes"
+              text={selNode.note ?? ""}
+              runs={selNode.noteRuns}
+              placeholder="Notes for this topic"
+              onCommit={(note, noteRuns, changed) => changed && setNode({ note: note || undefined, noteRuns })}
+            />
               </>
             )}
           </aside>

@@ -1,6 +1,7 @@
 import { Box, Node, findNode, visibleIds } from "./model";
 import { summaryD, summaryGeo } from "./summary";
 import { progressText } from "./task";
+import { runsSvg, validRuns } from "./rich";
 import { hex } from "./textstyle";
 
 /** Point on box `b`'s border in the direction of (tx, ty). */
@@ -67,8 +68,11 @@ export function mapSvg(root: Node, boxes: Box[], rawColorOf: (b: Box) => string)
       out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="#fff" stroke="${c}" stroke-width="${isRoot ? 3 : 2}"/>`);
       if (isRoot || n.color) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="${c}" fill-opacity="${isRoot ? ".18" : ".2"}"/>`);
     }
-    const label = [n.icon, n.priority ? `P${n.priority}` : "", n.progress != null ? progressText(n.progress) : "", n.text || "…", n.note ? "📝" : "", n.link ? "🔗" : ""].filter(Boolean).join(" ");
-    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${n.bold ? 700 : isRoot ? 600 : 400}"${n.italic ? ' font-style="italic"' : ""}${n.strike ? ' text-decoration="line-through"' : ""} fill="${hex(n.textColor) ?? "#1e3a5f"}">${esc(label)}</text>`);
+    const pre = [n.icon, n.priority ? `P${n.priority}` : "", n.progress != null ? progressText(n.progress) : ""].filter(Boolean).join(" ");
+    const post = [n.note ? "📝" : "", n.link ? "🔗" : ""].filter(Boolean).join(" ");
+    const runs = validRuns(n.text, n.runs);
+    const label = [pre && esc(pre), runs ? runsSvg(runs) : esc(n.text || "…"), post && esc(post)].filter(Boolean).join(" ");
+    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${n.bold ? 700 : isRoot ? 600 : 400}"${n.italic ? ' font-style="italic"' : ""}${n.strike ? ' text-decoration="line-through"' : ""} fill="${hex(n.textColor) ?? "#1e3a5f"}">${label}</text>`);
   }
   for (const { s, g } of sums) {
     const l = g.label;

@@ -93,3 +93,10 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 
 /* Org chart: the fold chip hangs under the topic instead of sitting on its right edge. */
 .node.flow-down .fold { right: 50%; top: auto; bottom: -10px; transform: translateX(50%); }
+
+/* Rich editors (topic text and notes): a contenteditable that looks like the text it replaces. */
+.rich { outline: 0; white-space: nowrap; min-height: 1.2em; }
+.node .rich { display: inline-block; width: 100%; text-align: center; cursor: text; }
+.rich:empty::before { content: attr(data-placeholder); color: var(--muted); }
+.rich.notes { white-space: pre-wrap; min-height: 120px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--panel); cursor: text; }
+.rich.notes:focus { border-color: var(--accent); }

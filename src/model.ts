@@ -1,3 +1,4 @@
+import type { Run } from "./rich";
 export type Rel = { id: string; from: string; to: string };
 export type Summary = { id: string; from: string; to: string; text: string };
 export type Shape = "round" | "rect" | "line";
@@ -16,6 +17,8 @@ export type Node = {
   italic?: boolean;
   strike?: boolean;
   textColor?: string; // "#rrggbb"
+  runs?: Run[]; // per-word style over `text`; ignored once it no longer spells the text
+  noteRuns?: Run[]; // the same for `note`
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
@@ -50,7 +53,7 @@ export const findNode = (n: Node, id: string): Node | undefined =>
 /** Shallow-merge `p` into one node (text, colour, note, theme, …). */
 export const patch = (root: Node, id: string, p: Partial<Node>) => map(root, id, (n) => ({ ...n, ...p }));
 
-export const rename = (root: Node, id: string, text: string) => (findNode(root, id)?.text === text ? root : patch(root, id, { text }));
+export const rename = (root: Node, id: string, text: string) => (findNode(root, id)?.text === text ? root : patch(root, id, { text, runs: undefined })); // new text: any per-word style is gone
 
 export const toggle = (root: Node, id: string) =>
   map(root, id, (n) => (n.children.length ? { ...n, collapsed: !n.collapsed } : n));

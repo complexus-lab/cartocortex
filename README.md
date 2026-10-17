@@ -38,7 +38,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Per-word rich text and rich-text notes, fishbone and other structures, and legacy XML-only `.xmind` files.
+Fishbone and other structures, and legacy XML-only `.xmind` files.
 
 ## Added
 
@@ -66,4 +66,4 @@ Task markers and links: the panel sets a priority (1-5, a numbered disc: darker 
 
 Structures: the toolbar picker offers Logic (right), Map (both sides), Org chart (top-down) and Tree (indented list). Arrow keys follow the structure (in an org chart, ↓ goes to the first child and ← / → move between topics in a row; in a tree, ↑ / ↓ walk the rows). Summaries are drawn in the Logic and Map structures only. The structure is saved per sheet and maps to XMind's org-chart, tree-chart, logic and map structures; other XMind structures (fishbone, matrix, timeline) open as Logic.
 
-Text style: the panel's Text section (and ⌘B / ⌘I) sets bold, italic, strikethrough and a text colour on the selected topics. It applies to the whole topic, not to single words, and notes stay plain text. The style is kept in PNG / PDF export and in `.xmind` files (as XMind's `fo:font-weight`, `fo:font-style`, `fo:text-decoration` and `fo:color` properties; I have not checked it against a file made by XMind itself). Colours read from files must be plain `#rrggbb`.
+Text style: the panel's Text section (and ⌘B / ⌘I) sets bold, italic, strikethrough and a text colour on the selected topics. With the cursor in a topic (or in the notes) the same controls style just the selected words; otherwise they style the whole topic. Notes are now a small rich editor too (plain text underneath, so search still works). Per-word style is saved with the map and shows in PNG / PDF export, but `.xmind` export writes plain text for titles and notes (topic-level style is still exported). The style is kept in PNG / PDF export and in `.xmind` files (as XMind's `fo:font-weight`, `fo:font-style`, `fo:text-decoration` and `fo:color` properties; I have not checked it against a file made by XMind itself). Colours read from files must be plain `#rrggbb`.
