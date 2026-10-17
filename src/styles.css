@@ -1,22 +1,25 @@
 :root {
-  --bg: #f6f7f9; --panel: #fff; --ink: #1d2330; --muted: #6b7385; --line: #aeb6c6;
-  --accent: #3b6cff; --node: #fff;
-  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: light;
+  /* Palette Glossolalie Advisory: teal accent, navy ink, pale teal tints. No dark fills anywhere. */
+  --teal: #0d9488; --navy: #1e3a5f;
+  --tint5: #f0f9f8; --tint10: #e7f4f3; --tint20: #cfe9e7; --tint40: #9fd3cf;
+  --bg: var(--tint5); --panel: #fff; --ink: var(--navy); --muted: #5c7391; --line: var(--tint40);
+  --accent: var(--teal); --node: #fff;
+  font: 15px/1.4 Calibri, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--ink);
 }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #161a22; --panel: #1f2430; --ink: #e8ebf2; --muted: #8f98ab; --line: #4a5266; --node: #262c3a; }
-}
+::selection { background: var(--tint20); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
 .app { display: flex; flex-direction: column; height: 100%; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); z-index: 2; }
-.toolbar button, .toolbar select, .panel button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.toolbar button:hover:not(:disabled), .panel button:hover { border-color: var(--accent); }
-.toolbar button:disabled { opacity: .4; cursor: default; }
-.toolbar button.on, .panel button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.toolbar button, .toolbar select, .panel button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.toolbar button:hover:not(:disabled), .panel button:hover { border-color: var(--accent); background: var(--tint5); }
+.toolbar button:disabled { opacity: .45; cursor: default; }
+.toolbar button.on, .panel button.on { border-color: var(--accent); background: var(--tint20); }
 .toolbar kbd { color: var(--muted); font: inherit; font-size: 12px; margin-left: 4px; }
-.toolbar .search { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; width: 130px; }
+.toolbar .search { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; width: 130px; }
 .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
 
 .main { flex: 1; display: flex; min-height: 0; }
@@ -29,14 +32,14 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .edges path.rel-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
 
 .bound { position: absolute; border: 2px dashed var(--c); border-radius: 14px; background: color-mix(in srgb, var(--c) 8%, transparent); pointer-events: none; }
-.node { position: absolute; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 12px; background: var(--node); border: 2px solid var(--c, var(--line)); border-radius: 17px; pointer-events: auto; cursor: pointer; user-select: none; white-space: nowrap; }
+.node { position: absolute; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 12px; background: var(--node); color: var(--ink); border: 2px solid var(--c, var(--line)); border-radius: 17px; pointer-events: auto; cursor: pointer; user-select: none; white-space: nowrap; }
 .node.filled { background: color-mix(in srgb, var(--c) 20%, var(--node)); }
-.node.root { background: var(--c); color: #fff; font-weight: 600; }
+/* The central topic: deeper tint and a thicker border for emphasis, never a solid dark fill. */
+.node.root { background: color-mix(in srgb, var(--c) 18%, #fff); border-width: 3px; font-weight: 700; }
 .node.shape-rect { border-radius: 4px; }
 .node.shape-line { border-color: transparent; border-bottom-color: var(--c); border-radius: 0; background: transparent; }
-.node.root.shape-line { color: var(--ink); }
 .node.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
-.node.hit { box-shadow: 0 0 0 4px #ffd43b; }
+.node.hit { box-shadow: 0 0 0 4px var(--tint40), 0 0 0 6px var(--navy); }
 .node input { width: 100%; font: inherit; color: inherit; background: transparent; border: 0; outline: 0; text-align: center; }
 .mark, .badge { font-size: 13px; line-height: 1; }
 .fold { position: absolute; right: -10px; top: 50%; transform: translateY(-50%); min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; line-height: 16px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
@@ -49,12 +52,12 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .panel .row button { padding: 2px 8px; }
 .panel .sw { width: 22px; height: 22px; padding: 0; border-radius: 50%; }
 .panel .sw.on { outline: 2px solid var(--ink); outline-offset: 1px; }
-.panel input, .panel textarea { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.panel input, .panel textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .panel textarea { min-height: 120px; resize: vertical; }
 
 .outline { flex: 1; overflow: auto; padding: 16px 12px; }
 .orow { display: flex; align-items: center; gap: 6px; padding-right: 12px; border-radius: 6px; }
-.orow.sel { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.orow.sel { background: var(--tint10); }
 .obullet { width: 16px; text-align: center; color: var(--muted); cursor: pointer; user-select: none; }
 .orow input { flex: 1; font: inherit; color: inherit; background: transparent; border: 0; outline: 0; padding: 4px 6px; }
 
@@ -66,7 +69,8 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .present .world { transition: transform .5s ease; }
 .present .node, .present .stage { pointer-events: none; }
 .hud { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 6px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; z-index: 5; }
-.hud button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; cursor: pointer; }
+.hud button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; cursor: pointer; }
+.hud button:hover { border-color: var(--accent); background: var(--tint5); }
 
 .marquee { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; z-index: 3; }
 
@@ -74,7 +78,7 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 
 .tabs { display: flex; gap: 2px; align-items: flex-end; padding: 4px 12px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
 .tab { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; color: var(--muted); cursor: pointer; white-space: nowrap; }
-.tab.on { background: var(--bg); border-color: var(--line); color: var(--ink); margin-bottom: -1px; }
+.tab.on { background: var(--bg); border-color: var(--line); color: var(--ink); font-weight: 700; margin-bottom: -1px; }
 .tab input { font: inherit; color: inherit; background: transparent; border: 0; outline: 0; width: 110px; }
 .tab .x, .tabs .add { font: inherit; color: var(--muted); background: transparent; border: 0; border-radius: 4px; padding: 0 4px; cursor: pointer; }
 .tab .x:hover, .tabs .add:hover { color: var(--accent); }

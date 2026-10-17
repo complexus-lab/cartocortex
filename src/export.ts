@@ -49,28 +49,28 @@ export function mapSvg(root: Node, boxes: Box[], colorOf: (b: Box) => string) {
   }
   for (const b of boxes) if (b.parent) out.push(`<path d="${branchD(b, byId[b.parent])}" fill="none" stroke="${colorOf(b)}" stroke-width="2"/>`);
   for (const r of root.rels ?? []) {
-    if (byId[r.from] && byId[r.to]) out.push(`<path d="${relD(byId[r.from], byId[r.to])}" fill="none" stroke="#6b7385" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arr)"/>`);
+    if (byId[r.from] && byId[r.to]) out.push(`<path d="${relD(byId[r.from], byId[r.to])}" fill="none" stroke="#5c7391" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arr)"/>`);
   }
   for (const b of boxes) {
     const n = findNode(root, b.id)!, c = colorOf(b), isRoot = b.depth === 0, shape = n.shape ?? "round";
     if (shape === "line" && !isRoot) out.push(`<path d="M${b.x} ${b.y + b.h}H${b.x + b.w}" stroke="${c}" stroke-width="2"/>`);
     else {
       const rx = shape === "rect" ? 4 : b.h / 2;
-      out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="${isRoot ? c : "#fff"}" stroke="${c}" stroke-width="2"/>`);
-      if (n.color && !isRoot) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="${c}" fill-opacity=".2"/>`);
+      out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="#fff" stroke="${c}" stroke-width="${isRoot ? 3 : 2}"/>`);
+      if (isRoot || n.color) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="${c}" fill-opacity="${isRoot ? ".18" : ".2"}"/>`);
     }
     const label = [n.icon, n.text || "…", n.note ? "📝" : "", n.link ? "🔗" : ""].filter(Boolean).join(" ");
-    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${isRoot ? 600 : 400}" fill="${isRoot && shape !== "line" ? "#fff" : "#1d2330"}">${esc(label)}</text>`);
+    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${isRoot ? 600 : 400}" fill="#1e3a5f">${esc(label)}</text>`);
   }
   for (const { s, g } of sums) {
     const l = g.label;
-    out.push(`<path d="${summaryD(g)}" fill="none" stroke="#6b7385" stroke-width="2"/>`);
-    out.push(`<rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${l.h / 2}" fill="#fff" stroke="#6b7385" stroke-width="2" stroke-dasharray="6 4"/>`);
-    out.push(`<text x="${l.x + l.w / 2}" y="${l.y + l.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#1d2330">${esc(s.text || "…")}</text>`);
+    out.push(`<path d="${summaryD(g)}" fill="none" stroke="#5c7391" stroke-width="2"/>`);
+    out.push(`<rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${l.h / 2}" fill="#fff" stroke="#5c7391" stroke-width="2" stroke-dasharray="6 4"/>`);
+    out.push(`<text x="${l.x + l.w / 2}" y="${l.y + l.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" fill="#1e3a5f">${esc(s.text || "…")}</text>`);
   }
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x0} ${y0} ${w} ${h}" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">` +
-    `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6b7385"/></marker></defs>` +
+    `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5c7391"/></marker></defs>` +
     `<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="#fff"/>${out.join("")}</svg>`;
   return { svg, w, h };
 }

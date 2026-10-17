@@ -16,7 +16,7 @@ type Sheets = { roots: Node[]; hist: Hist[]; cur: number };
 const emptyHist = (r: Node): Hist => ({ past: [], future: [], sel: r.id });
 
 const THEMES: Record<string, { name: string; root: string; accent: string; palette: string[] }> = {
-  classic: { name: "Classic", root: "#3b6cff", accent: "#3b6cff", palette: ["#e8590c", "#2f9e44", "#1c7ed6", "#ae3ec9", "#f08c00", "#0c8599"] },
+  classic: { name: "Glossolalie", root: "#0d9488", accent: "#0d9488", palette: ["#0d9488", "#1e3a5f", "#156775", "#3d5f8a", "#0a6f66", "#5e7fa3"] },
   ocean: { name: "Ocean", root: "#0b6e99", accent: "#0b6e99", palette: ["#1098ad", "#3b5bdb", "#1971c2", "#0ca678", "#7048e8", "#15aabf"] },
   forest: { name: "Forest", root: "#2b8a3e", accent: "#2b8a3e", palette: ["#5c940d", "#2f9e44", "#099268", "#e67700", "#a61e4d", "#4263eb"] },
   sunset: { name: "Sunset", root: "#d9480f", accent: "#d9480f", palette: ["#f03e3e", "#f76707", "#fab005", "#d6336c", "#ae3ec9", "#e8590c"] },
@@ -684,7 +684,7 @@ export default function App() {
             <h4>{multi ? `${ids.length} topics` : selNode.text || "Topic"}</h4>
             <label>Fill</label>
             <div className="row">
-              {[...theme.palette, "#868e96", "#f1c40f"].map((c) => (
+              {[...theme.palette, "#9fd3cf", "#8a9bb0"].map((c) => (
                 <button key={c} className={`sw${selNode.color === c ? " on" : ""}`} style={{ background: c }} onClick={() => setNode({ color: c })} />
               ))}
               <button onClick={() => setNode({ color: undefined })}>Auto</button>
