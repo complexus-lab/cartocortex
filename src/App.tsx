@@ -34,7 +34,7 @@ const THEMES: Record<string, { name: string; root: string; accent: string; palet
   sunset: { name: "Sunset", root: "#d9480f", accent: "#d9480f", palette: ["#f03e3e", "#f76707", "#fab005", "#d6336c", "#ae3ec9", "#e8590c"] },
   mono: { name: "Mono", root: "#343a40", accent: "#343a40", palette: ["#495057", "#868e96", "#6c757d", "#343a40", "#adb5bd", "#212529"] },
 };
-const ICONS = ["â­", "â", "â", "â", "â", "ð¡", "ð¥", "ð©", "â ï¸", "â¤ï¸"];
+const ICONS = ["⭐", "❗", "❓", "✅", "❌", "💡", "🔥", "🚩", "⚠️", "❤️"];
 const SHAPES = [["round", "Round"], ["rect", "Box"], ["line", "Line"]] as const;
 
 export const KEY = "mindmap.autosave";
@@ -315,7 +315,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
   // The window title shows the file name, with a bullet while there are unsaved changes.
   useEffect(() => {
     const name = docPath ? baseName(docPath) : docName ?? "Untitled";
-    const title = `${dirty ? "â¢ " : ""}${name} â Cartocortex`;
+    const title = `${dirty ? "• " : ""}${name} — Cartocortex`;
     onMeta(name, dirty);
     if (!active) return;
     document.title = title;
@@ -543,7 +543,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
     window.addEventListener("pointerup", up);
   };
 
-  // Shift-drag on empty canvas draws a selection box; â/Ctrl-drag adds to the current selection.
+  // Shift-drag on empty canvas draws a selection box; ⌘/Ctrl-drag adds to the current selection.
   const marquee = (e: React.PointerEvent) => {
     const r = stage.current!.getBoundingClientRect();
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -587,10 +587,10 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
     <div className={`app${present !== null ? " present" : ""}`} style={{ "--accent": theme.accent } as React.CSSProperties}>
       <div className="toolbar">
         <Menu label="File" items={[
-          { label: "New map", kbd: "âN", on: newDoc },
-          { label: "Openâ¦", kbd: "âO", on: () => open() },
-          { label: "Save", kbd: "âS", on: () => saveDoc() },
-          ...(isTauri ? [{ label: "Save asâ¦", kbd: "â§âS", on: () => saveDoc(true) }] : []),
+          { label: "New map", kbd: "⌘N", on: newDoc },
+          { label: "Open…", kbd: "⌘O", on: () => open() },
+          { label: "Save", kbd: "⌘S", on: () => saveDoc() },
+          ...(isTauri ? [{ label: "Save as…", kbd: "⇧⌘S", on: () => saveDoc(true) }] : []),
           { heading: "New from template" },
           ...TEMPLATES.map((x) => ({ label: x.name, on: () => startFrom(x.build()) })),
           ...(isTauri && recent.length ? [{ heading: "Recent" }, ...recent.map((p) => ({ label: baseName(p), title: p, on: () => open(p) }))] : []),
@@ -604,13 +604,13 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
         ]} />
         <Menu label="Insert" items={[
           { label: "Child topic", kbd: "Tab", on: newChild },
-          { label: "Sibling topic", kbd: "âµ", on: newSibling },
+          { label: "Sibling topic", kbd: "↵", on: newSibling },
           { label: "Floating topic", title: "Free-standing topic (or double-click the canvas)", on: floatAtCentre },
           "-",
-          { label: linking ? "Relationship: pick the targetâ¦" : "Relationship", title: "Choose this, then click the target topic", on: () => setLinking(!linking) },
+          { label: linking ? "Relationship: pick the target…" : "Relationship", title: "Choose this, then click the target topic", on: () => setLinking(!linking) },
           { label: "Boundary", checked: !!s.root.bounds?.includes(s.sel), on: toggleBound },
           {
-            label: summarizing ? "Summary: pick the range endâ¦" : "Summary",
+            label: summarizing ? "Summary: pick the range end…" : "Summary",
             title: "Select several sibling topics first, or choose this and then click the last topic of the range",
             on: () => {
               const span = siblingSpan(s.root, ids);
@@ -625,7 +625,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
             label: l, checked: (s.root.layout ?? "right") === v, on: () => setDocProp({ layout: v }),
           })),
           { heading: "Theme" },
-          ...[...Object.entries(THEMES).map(([id, t]) => [id, t.name]), ["custom", "Customâ¦"]].map(([id, name]) => ({
+          ...[...Object.entries(THEMES).map(([id, t]) => [id, t.name]), ["custom", "Custom…"]].map(([id, name]) => ({
             label: name, checked: (s.root.theme ?? "classic") === id,
             on: () => {
               setDraft(null);
@@ -640,14 +640,14 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
           { label: "Present", on: startPresenting },
         ]} />
         <span className="sep" />
-        <button onClick={undo} disabled={!s.past.length} title="Undo (âZ)">â¶ Undo</button>
-        <button onClick={redo} disabled={!s.future.length} title="Redo (â§âZ)">â· Redo</button>
-        <button onClick={del} title="Delete the selected topic (â«)">Delete</button>
+        <button onClick={undo} disabled={!s.past.length} title="Undo (⌘Z)">↶ Undo</button>
+        <button onClick={redo} disabled={!s.future.length} title="Redo (⇧⌘Z)">↷ Redo</button>
+        <button onClick={del} title="Delete the selected topic (⌫)">Delete</button>
         <span className="grow" />
         <input
           ref={searchBox}
           className="search"
-          placeholder={`Find âF${q ? ` (${hits.length})` : ""}`}
+          placeholder={`Find ⌘F${q ? ` (${hits.length})` : ""}`}
           value={q}
           onChange={(e) => (setQ(e.target.value), setHit(-1))}
           onKeyDown={(e) => {
@@ -655,7 +655,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
             if (e.key === "Escape") (setQ(""), e.currentTarget.blur());
           }}
         />
-        <button className={dirty ? "on" : ""} onClick={() => saveDoc()} title={dirty ? "Save: unsaved changes (âS)" : "Save (âS)"}>Save</button>
+        <button className={dirty ? "on" : ""} onClick={() => saveDoc()} title={dirty ? "Save: unsaved changes (⌘S)" : "Save (⌘S)"}>Save</button>
       </div>
       <div className="tabs">
         {sheets.roots.map((r0, i) => {
@@ -693,7 +693,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
                   title={delAsk === i ? "Click again to delete this sheet" : "Delete sheet"}
                   onClick={(e) => (e.stopPropagation(), delAsk === i ? deleteSheet(i) : setDelAsk(i))}
                 >
-                  {delAsk === i ? "Delete?" : "Ã"}
+                  {delAsk === i ? "Delete?" : "×"}
                 </button>
               )}
             </div>
@@ -798,7 +798,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
                   ) : null}
                   {n.progress != null && (
                     <span className="prog" title={`${n.progress}% done`} style={{ "--p": n.progress } as React.CSSProperties}>
-                      {n.progress >= 100 ? "â" : ""}
+                      {n.progress >= 100 ? "✓" : ""}
                     </span>
                   )}
                   {s.edit === b.id ? (
@@ -812,23 +812,23 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
                     />
                   ) : (
                     <span style={textStyle(n)}>
-                      {validRuns(n.text, n.runs)?.map((r, k) => <span key={k} style={runStyle(r)}>{r.t}</span>) ?? (n.text || "â¦")}
+                      {validRuns(n.text, n.runs)?.map((r, k) => <span key={k} style={runStyle(r)}>{r.t}</span>) ?? (n.text || "…")}
                     </span>
                   )}
-                  {n.note && <span className="badge" title={n.note}>ð</span>}
+                  {n.note && <span className="badge" title={n.note}>📝</span>}
                   {n.link && (
                     <span className="badge link" title={`Open ${n.link}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), openLink(n.link!))}>
-                      ð
+                      🔗
                     </span>
                   )}
                   {n.topicLink && where(n.topicLink) && (
                     <span
                       className="badge link"
-                      title={`Go to â${where(n.topicLink)!.node.text || "â¦"}â`}
+                      title={`Go to “${where(n.topicLink)!.node.text || "…"}”`}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => (e.stopPropagation(), goTo(n.topicLink!))}
                     >
-                      âª
+                      ↪
                     </span>
                   )}
                   {n.children.length > 0 && (
@@ -838,7 +838,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => commit((r) => toggle(r, b.id))}
                     >
-                      {n.collapsed ? n.children.length : "â¹"}
+                      {n.collapsed ? n.children.length : "‹"}
                     </button>
                   )}
                 </div>
@@ -865,7 +865,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
                     }}
                   />
                 ) : (
-                  <span>{x.text || "â¦"}</span>
+                  <span>{x.text || "…"}</span>
                 )}
               </div>
             ))}
@@ -919,8 +919,8 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
             </div>
             <label title="With the cursor in a topic or in the notes these style the selected words; otherwise the whole topic">Text</label>
             <div className="row" onMouseDown={(e) => e.preventDefault() /* keep the editor's selection */}>
-              <button className={selNode.bold ? "on" : ""} title="Bold (âB)" onClick={() => fmt("bold", { bold: selNode.bold ? undefined : true })}><b>B</b></button>
-              <button className={selNode.italic ? "on" : ""} title="Italic (âI)" onClick={() => fmt("italic", { italic: selNode.italic ? undefined : true })}><i>I</i></button>
+              <button className={selNode.bold ? "on" : ""} title="Bold (⌘B)" onClick={() => fmt("bold", { bold: selNode.bold ? undefined : true })}><b>B</b></button>
+              <button className={selNode.italic ? "on" : ""} title="Italic (⌘I)" onClick={() => fmt("italic", { italic: selNode.italic ? undefined : true })}><i>I</i></button>
               <button className={selNode.strike ? "on" : ""} title="Strikethrough" onClick={() => fmt("strikeThrough", { strike: selNode.strike ? undefined : true })}><s>S</s></button>
             </div>
             <div className="row" onMouseDown={(e) => e.preventDefault()}>
@@ -946,22 +946,22 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
             {!multi && (
               <>
             <label>Link</label>
-            <input defaultValue={selNode.link ?? ""} placeholder="https://â¦" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
-            {selNode.link && <button onClick={() => openLink(selNode.link!)}>Open link â</button>}
+            <input defaultValue={selNode.link ?? ""} placeholder="https://…" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
+            {selNode.link && <button onClick={() => openLink(selNode.link!)}>Open link ↗</button>}
             <label>Link to a topic</label>
             <div className="row">
               <button className={pickingTopic ? "on" : ""} onClick={() => setPickingTopic(!pickingTopic)}>
-                {pickingTopic ? "Click a topicâ¦" : selNode.topicLink ? "Changeâ¦" : "Pick a topicâ¦"}
+                {pickingTopic ? "Click a topic…" : selNode.topicLink ? "Change…" : "Pick a topic…"}
               </button>
-              {selNode.topicLink && where(selNode.topicLink) && <button onClick={() => goTo(selNode.topicLink!)}>Go âª</button>}
+              {selNode.topicLink && where(selNode.topicLink) && <button onClick={() => goTo(selNode.topicLink!)}>Go ↪</button>}
               {selNode.topicLink && <button onClick={() => setNode({ topicLink: undefined })}>Clear</button>}
             </div>
             {selNode.topicLink && (
-              <div className="hint">{where(selNode.topicLink) ? `â ${where(selNode.topicLink)!.node.text || "â¦"}` : "The linked topic no longer exists."}</div>
+              <div className="hint">{where(selNode.topicLink) ? `→ ${where(selNode.topicLink)!.node.text || "…"}` : "The linked topic no longer exists."}</div>
             )}
             <label>Picture</label>
             <div className="row">
-              <button onClick={addImage}>{validImage(selNode.image) ? "Replaceâ¦" : "Addâ¦"}</button>
+              <button onClick={addImage}>{validImage(selNode.image) ? "Replace…" : "Add…"}</button>
               {selNode.image && <button onClick={() => setNode({ image: undefined })}>Remove</button>}
             </div>
             <label>Notes</label>
@@ -985,9 +985,9 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
       )}
       {present !== null && (
         <div className="hud">
-          <button onClick={() => setPresent(Math.max(0, present - 1))}>â</button>
+          <button onClick={() => setPresent(Math.max(0, present - 1))}>←</button>
           <span>{present + 1} / {steps}</span>
-          <button onClick={() => setPresent(Math.min(steps - 1, present + 1))}>â</button>
+          <button onClick={() => setPresent(Math.min(steps - 1, present + 1))}>→</button>
           <button onClick={stopPresenting}>Exit</button>
         </div>
       )}
