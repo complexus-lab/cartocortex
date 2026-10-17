@@ -32,6 +32,12 @@ test("documents are written and read in the format their extension names", async
   expect(back.roots.map((r) => r.text)).toEqual(["Plan", "Second"]);
   expect(back.roots[0].children[0].text).toBe("child");
   expect(back.roots[0].title).toBe("Sheet A");
+
+  const mm = docBytes("/tmp/plan.mm", roots, 1);
+  expect(new TextDecoder().decode(mm).startsWith("<?xml")).toBe(true); // FreeMind's XML, not a zip
+  const backMm = await parseDoc("plan.mm", mm);
+  expect(backMm.roots.map((r) => r.text)).toEqual(["Plan", "Second"]); // one root node per sheet
+  expect(backMm.roots[0].children[0].text).toBe("child");
 });
 
 const store = new Map<string, string>();

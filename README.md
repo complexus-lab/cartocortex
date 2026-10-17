@@ -2,7 +2,7 @@
 
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
-Tabs and menus: the toolbar is three menus (File with templates, recent files and export; Insert; View with structure, theme and panels) plus Undo, Redo, Delete, Find and Save. Each map opens in its own tab (a blank tab is reused; Open… puts a map in a new tab when the current one holds a file or unsaved work); the second row of tabs is the sheets inside one map. Only the first tab keeps the autosave.
+Tabs and menus: the toolbar is three menus (File with templates, recent files and export; Insert; View with structure, theme and panels) plus Undo, Redo, Delete, Find and Save. Each map opens in its own tab (a blank tab is reused; Openâ¦ puts a map in a new tab when the current one holds a file or unsaved work); the second row of tabs is the sheets inside one map. Only the first tab keeps the autosave.
 
 ## Download
 
@@ -29,18 +29,18 @@ npm test               # unit tests for the tree model and layout
 | Space / F2 / double-click | Edit text (Enter to commit, Esc to cancel) |
 | Arrows | Move selection |
 | Delete / Backspace | Delete node |
-| ⌘/Ctrl+Z, +Shift | Undo, redo |
-| ⌘/Ctrl+S | Save as JSON |
+| â/Ctrl+Z, +Shift | Undo, redo |
+| â/Ctrl+S | Save as JSON |
 | Drag a node onto another | Re-parent |
-| Wheel / drag background | Pan; ⌘/Ctrl+wheel or pinch zooms |
+| Wheel / drag background | Pan; â/Ctrl+wheel or pinch zooms |
 
-The ‹ chip on a node collapses its branch. The map autosaves to local storage; Save/Open use `.json`, and Export MD writes a Markdown outline.
+The â¹ chip on a node collapses its branch. The map autosaves to local storage; Save/Open use `.json`, and Export MD writes a Markdown outline.
 
 ## Layout
 
-- `src/model.ts` – immutable tree ops, tidy-tree layout, Markdown export
-- `src/App.tsx` – canvas, keyboard handling, undo/redo, save/open
-- `src-tauri/` – Rust shell with the dialog and fs plugins
+- `src/model.ts` â immutable tree ops, tidy-tree layout, Markdown export
+- `src/App.tsx` â canvas, keyboard handling, undo/redo, save/open
+- `src-tauri/` â Rust shell with the dialog and fs plugins
 
 ## Not yet
 
@@ -48,19 +48,19 @@ Direction variants of XMind structures (up-pointing org chart, left-hand tree), 
 
 ## Added
 
-Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding and structure only).
+Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (âC/X/V/D); find (âF, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding and structure only).
 
 Outline view (toolbar "Outline": Enter = sibling, Tab / Shift+Tab = indent / outdent, shares undo with the map) and PNG / PDF export (the PDF is one page holding an image of the map, so its text isn't selectable).
 
 Summaries: select a topic, click "Summary", then click the last topic of the range (it must share a parent). A bracket and an editable label (double-click) appear beside the span; click the label and press Delete to remove it. They are included in PNG/PDF export but not in `.xmind` export.
 
-Presentation: "Present" goes full-screen and reveals one top-level branch per step (→ / Space / Enter next, ← back, Esc exit); earlier branches dim.
+Presentation: "Present" goes full-screen and reveals one top-level branch per step (â / Space / Enter next, â back, Esc exit); earlier branches dim.
 
-Multi-select: Shift / ⌘ / Ctrl-click toggles topics; Shift-drag on empty canvas draws a selection box (⌘/Ctrl-drag adds to the current selection); ⌘A selects all. Delete, drag-to-reparent, and the Fill / Shape / Marker controls act on the whole selection, and Summary wraps selected siblings in one click. Copy / paste / duplicate still work on the primary topic only.
+Multi-select: Shift / â / Ctrl-click toggles topics; Shift-drag on empty canvas draws a selection box (â/Ctrl-drag adds to the current selection); âA selects all. Delete, drag-to-reparent, and the Fill / Shape / Marker controls act on the whole selection, and Summary wraps selected siblings in one click. Copy / paste / duplicate still work on the primary topic only.
 
 Floating topics: "Float" (or double-click empty canvas) adds a free-standing topic with no branch to the root. Drag it anywhere; release over another topic to attach it there. In `.xmind` export they become ordinary top-level topics (positions are not kept). Deleting topics also removes relationships, boundaries and summaries that pointed at them.
 
-Sheets: tabs under the toolbar, one root topic and one undo history per sheet. "+" adds a sheet, double-click a tab renames it, × then "Delete?" removes it. Save writes every sheet to one `.json` (older single-map files still open); `.xmind` import and export carry all sheets. PNG, PDF, Markdown and presentation use the open sheet.
+Sheets: tabs under the toolbar, one root topic and one undo history per sheet. "+" adds a sheet, double-click a tab renames it, Ã then "Delete?" removes it. Save writes every sheet to one `.json` (older single-map files still open); `.xmind` import and export carry all sheets. PNG, PDF, Markdown and presentation use the open sheet.
 
 Security: the native window runs under a Content-Security-Policy (`src-tauri/tauri.conf.json`): scripts only from the app itself, no network connections except Tauri's own bridge, images only from the app, `data:` and `blob:`. Inline styles are allowed because topic colours are applied as style attributes. Files you open are parsed as data and never executed.
 
@@ -68,27 +68,27 @@ Security: the native window runs under a Content-Security-Policy (`src-tauri/tau
 
 `app-icon.svg` is generated by `scripts/make-icon.mjs` (a side-view brain with a neuron network on a pale teal tile, in the Glossolalie palette: teal #0D9488, navy #1E3A5F and pale tints; the palette and the neuron layout seed are constants at the top). To rebuild: `node scripts/make-icon.mjs`, render the SVG to `app-icon.png` at 1024px (any SVG renderer, e.g. `@resvg/resvg-js`), then `npx tauri icon app-icon.png` to refresh `src-tauri/icons/`.
 
-Custom theme: pick "Custom…" in the theme menu to edit the central/accent colour and six branch colours in the panel; changes preview live and commit as one undo step. Colours are stored in the document (`themeColors`) and only `#rrggbb` values are accepted.
+Custom theme: pick "Customâ¦" in the theme menu to edit the central/accent colour and six branch colours in the panel; changes preview live and commit as one undo step. Colours are stored in the document (`themeColors`) and only `#rrggbb` values are accepted.
 
 Look: the UI follows the Glossolalie palette (teal `#0D9488` accent, navy `#1E3A5F` ink, pale teal tints for surfaces, thin 40%-tint rules) with no dark fills and no dark mode; the central topic is a tinted pill with a thicker teal border. The default theme is named "Glossolalie"; the other themes only change branch colours. PNG / PDF export uses the same ink and tints.
 
-Task markers and links: the panel sets a priority (1-5, a numbered disc: darker is more urgent) and a progress (0-100%, a pie that becomes a check at 100%) on the selected topics; both map to XMind's `priority-N` and `task-*` markers on `.xmind` import and export (other XMind markers are dropped). A topic's link shows a 🔗 badge: click it, or use "Open link", to open it in the system browser. Only http, https and mailto links open; a bare host such as `example.com` gets https://, and `javascript:` or `file:` links are refused.
+Task markers and links: the panel sets a priority (1-5, a numbered disc: darker is more urgent) and a progress (0-100%, a pie that becomes a check at 100%) on the selected topics; both map to XMind's `priority-N` and `task-*` markers on `.xmind` import and export (other XMind markers are dropped). A topic's link shows a ð badge: click it, or use "Open link", to open it in the system browser. Only http, https and mailto links open; a bare host such as `example.com` gets https://, and `javascript:` or `file:` links are refused.
 
-Structures: the toolbar picker offers Logic (right), Logic (left), Map (both sides), Org chart (top-down), Tree (indented list), Fishbone, Timeline, Brace and Matrix. Arrow keys follow the structure (in an org chart, ↓ goes to the first child and ← / → move between topics in a row; in a tree, ↑ / ↓ walk the rows). Summaries are drawn in the Logic and Map structures only. The structure is saved per sheet and maps to XMind's org-chart, tree-chart, logic and map structures; XMind structures not listed open as their nearest match, or as Logic.
+Structures: the toolbar picker offers Logic (right), Logic (left), Map (both sides), Org chart (top-down), Tree (indented list), Fishbone, Timeline, Brace and Matrix. Arrow keys follow the structure (in an org chart, â goes to the first child and â / â move between topics in a row; in a tree, â / â walk the rows). Summaries are drawn in the Logic and Map structures only. The structure is saved per sheet and maps to XMind's org-chart, tree-chart, logic and map structures; XMind structures not listed open as their nearest match, or as Logic.
 
-Text style: the panel's Text section (and ⌘B / ⌘I) sets bold, italic, strikethrough and a text colour on the selected topics. With the cursor in a topic (or in the notes) the same controls style just the selected words; otherwise they style the whole topic. Notes are now a small rich editor too (plain text underneath, so search still works). Per-word style is saved with the map and shows in PNG / PDF export, but `.xmind` export writes plain text for titles and notes (topic-level style is still exported). The style is kept in PNG / PDF export and in `.xmind` files (as XMind's `fo:font-weight`, `fo:font-style`, `fo:text-decoration` and `fo:color` properties; I have not checked it against a file made by XMind itself). Colours read from files must be plain `#rrggbb`.
+Text style: the panel's Text section (and âB / âI) sets bold, italic, strikethrough and a text colour on the selected topics. With the cursor in a topic (or in the notes) the same controls style just the selected words; otherwise they style the whole topic. Notes are now a small rich editor too (plain text underneath, so search still works). Per-word style is saved with the map and shows in PNG / PDF export, but `.xmind` export writes plain text for titles and notes (topic-level style is still exported). The style is kept in PNG / PDF export and in `.xmind` files (as XMind's `fo:font-weight`, `fo:font-style`, `fo:text-decoration` and `fo:color` properties; I have not checked it against a file made by XMind itself). Colours read from files must be plain `#rrggbb`.
 
-Fishbone: the central topic is the head on the right; top-level topics alternate above and below the spine on slanted bones, with their sub-topics as ribs along each bone and deeper levels hanging to the left of their parent. Arrow keys walk the bones in reading order (← towards the tail, → towards the head). The head is always on the right (XMind's right-headed fishbone).
+Fishbone: the central topic is the head on the right; top-level topics alternate above and below the spine on slanted bones, with their sub-topics as ribs along each bone and deeper levels hanging to the left of their parent. Arrow keys walk the bones in reading order (â towards the tail, â towards the head). The head is always on the right (XMind's right-headed fishbone).
 
 Old XMind files: `.xmind` files saved by XMind 8 and earlier (XML inside, `content.xml`) now open too, with every sheet's title, structure, topics, notes, links, folding and priority / progress markers. Floating topics, relationships, styles and other markers in those files are dropped. Files from newer XMind (JSON inside) are read as before, and take precedence when a file has both. The reader is strict by design: XML with a DOCTYPE is refused.
 
-Timeline: the central topic starts a horizontal line and the top-level topics sit on it, in order. Each topic's sub-topics stack in a column under the first topic, above the second, and so on (nearest first, indented by depth). ← / → move along the line; ↑ / ↓ move into and along a stack. It maps to XMind's horizontal timeline, and any XMind timeline variant opens as this one.
+Timeline: the central topic starts a horizontal line and the top-level topics sit on it, in order. Each topic's sub-topics stack in a column under the first topic, above the second, and so on (nearest first, indented by depth). â / â move along the line; â / â move into and along a stack. It maps to XMind's horizontal timeline, and any XMind timeline variant opens as this one.
 
 XMind compatibility notes: structure classes, `fo:*` style keys, marker ids and the style / marker JSON layout were checked against identifiers inside the installed XMind app, but not against a document saved by XMind (none was available on this machine).
 
 More structures: **Logic (left)** mirrors the logic chart around the root. **Brace** keeps the logic layout but draws a curly brace around each parent's children (a plain line when there is only a row or two). **Matrix** (XMind's spreadsheet structure) puts the top-level topics side by side as columns, each with its sub-topics listed beneath. They map to XMind's `logic.left`, `brace.right` and `spreadsheet.column`; XMind's `brace.left` opens as the right-hand brace, and its row-wise matrix opens as columns.
 
-Saving (desktop app): ⌘S saves to the current file, and asks where the first time (or after New); ⇧⌘S saves under a new name. The format follows the extension: `.json` (Cartocortex, keeps everything) or `.xmind`. The window title shows the file name, with a • while there are unsaved changes, and New, Open and closing the window ask before discarding them. "Recent…" lists the last 8 files (kept across restarts). In a browser, Save downloads a `.json` instead. The map is also autosaved in the app's own storage, which is what you see when you start without opening a file.
+Saving (desktop app): âS saves to the current file, and asks where the first time (or after New); â§âS saves under a new name. The format follows the extension: `.json` (Cartocortex, keeps everything) or `.xmind`. The window title shows the file name, with a â¢ while there are unsaved changes, and New, Open and closing the window ask before discarding them. "Recentâ¦" lists the last 8 files (kept across restarts). In a browser, Save downloads a `.json` instead. The map is also autosaved in the app's own storage, which is what you see when you start without opening a file.
 
 ## Development and releases
 
@@ -99,12 +99,14 @@ Saving (desktop app): ⌘S saves to the current file, and asks where the first t
 
 MIT, see [LICENSE](LICENSE).
 
-Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md` or `.xmind` as well as `.json`.
+Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md`, `.xmind` or FreeMind `.mm` as well as `.json`.
 
-Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml` or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
+FreeMind / Freeplane: Open reads FreeMind's `.mm` maps (plain or gzipped) — topics, notes, links, links between topics, folding, fill and text colours, bold / italic, priority and progress icons — and left-side topics open as a one-sided or two-sided map. "Export FreeMind" (and Save as `.mm`) writes one root node per sheet, so extra sheets may not show in FreeMind itself; multi-line texts keep their lines, but pictures, relationships, summaries, per-word style, floating positions and structures beyond the sideways layouts are not carried.
 
-Links between topics: in the panel, "Link to a topic" → "Pick a topic…", then click the target. The source gets a ↪ badge (and "Go ↪" in the panel); clicking it opens any collapsed branches above the target and selects it, also when the target is on another sheet. In `.xmind` files a topic link is `xmind:#<topic id>`: it survives a round trip, and XMind allows one link per topic, so an outside web link wins if a topic has both.
+Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml`, FreeMind or Markdown file is an *import*: the map starts as unsaved, and âS asks for a new file rather than overwriting your original with a lossy copy.
+
+Links between topics: in the panel, "Link to a topic" â "Pick a topicâ¦", then click the target. The source gets a âª badge (and "Go âª" in the panel); clicking it opens any collapsed branches above the target and selects it, also when the target is on another sheet. In `.xmind` files a topic link is `xmind:#<topic id>`: it survives a round trip, and XMind allows one link per topic, so an outside web link wins if a topic has both.
 
 Pictures: the panel's "Picture" section puts an image (PNG, JPEG, GIF or WebP) on the selected topic, shown as a small thumbnail in the topic; click the thumbnail for the full image (Esc or a click closes it). The picture is downscaled to at most 800 px and stored inside the map file, so keep an eye on size (the autosave in the app's own storage has a few-megabyte limit). Pictures appear in PNG / PDF export but not in `.xmind`, OPML or Markdown. Only embedded raster images are ever drawn: SVG and web addresses in a map file are ignored.
 
-Templates: the "Template…" menu next to New starts a map from one of eight starters (brainstorm, project plan as a timeline, SWOT as a matrix, cause and effect as a fishbone, meeting notes as a tree, org chart, weekly plan, pros and cons as a brace map). Like New, it asks before discarding unsaved changes.
+Templates: the "Templateâ¦" menu next to New starts a map from one of eight starters (brainstorm, project plan as a timeline, SWOT as a matrix, cause and effect as a fishbone, meeting notes as a tree, org chart, weekly plan, pros and cons as a brace map). Like New, it asks before discarding unsaved changes.

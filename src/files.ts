@@ -1,4 +1,5 @@
 import { Book, bookJson, parseBook } from "./book";
+import { fromFreemindBytes, toFreemind } from "./freemind";
 import { Node, toMarkdown } from "./model";
 import { fromMarkdown, fromOpml, toOpml } from "./outline-io";
 import { exportXmind, importXmindSheets } from "./xmind";
@@ -16,21 +17,23 @@ export const pushRecent = (list: string[], path: string, max = 8) => [path, ...l
 /** Only Cartocortex's own format keeps its place on disk when opened; every other format is an import (Save asks for a new file). */
 export const keepsPath = (name: string) => extOf(name) === "json";
 
-/** What to write for a document saved at `path`, by extension: XMind, OPML, Markdown, otherwise Cartocortex JSON. */
+/** What to write for a document saved at `path`, by extension: XMind, OPML, Markdown, FreeMind, otherwise Cartocortex JSON. */
 export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
   const ext = extOf(path), text = (s: string) => new TextEncoder().encode(s);
   if (ext === "xmind") return exportXmind(roots);
   if (ext === "opml") return text(toOpml(roots));
   if (ext === "md" || ext === "markdown") return text(roots.map((r) => toMarkdown(r)).join("\n"));
+  if (ext === "mm") return text(toFreemind(roots));
   return text(bookJson(roots, cur, true));
 }
 
-/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic. */
+/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind map gives one sheet per root topic. */
 export async function parseDoc(name: string, bytes: Uint8Array): Promise<Book> {
   const ext = extOf(name), text = () => new TextDecoder().decode(bytes);
   if (ext === "xmind") return { roots: await importXmindSheets(bytes), cur: 0 };
   if (ext === "opml") return { roots: [fromOpml(text())], cur: 0 };
   if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0 };
+  if (ext === "mm") return { roots: await fromFreemindBytes(bytes), cur: 0 };
   return parseBook(text());
 }
 
@@ -67,11 +70,11 @@ export async function writePath(path: string, bytes: Uint8Array) {
 export async function pickOpen(): Promise<Opened | null> {
   if (tauri()) {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const path = await open({ filters: [{ name: "Mind map or outline", extensions: ["json", "xmind", "opml", "md", "markdown"] }] });
+    const path = await open({ filters: [{ name: "Mind map or outline", extensions: ["json", "xmind", "opml", "md", "markdown", "mm"] }] });
     return typeof path === "string" ? readPath(path) : null;
   }
   return new Promise((res) => {
-    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind,.opml,.md,.markdown" });
+    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind,.opml,.md,.markdown,.mm" });
     i.onchange = async () => {
       const f = i.files?.[0];
       res(f ? { name: f.name, path: null, bytes: new Uint8Array(await f.arrayBuffer()) } : null);
@@ -105,6 +108,7 @@ export async function pickSavePath(defaultName: string): Promise<string | null> 
       { name: "Cartocortex map (.json)", extensions: ["json"] },
       { name: "XMind (.xmind)", extensions: ["xmind"] },
       { name: "OPML outline (.opml)", extensions: ["opml"] },
+      { name: "FreeMind / Freeplane (.mm)", extensions: ["mm"] },
       { name: "Markdown outline (.md)", extensions: ["md"] },
     ],
   });
