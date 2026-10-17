@@ -7,6 +7,7 @@ import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
 import { toFreemind } from "./freemind";
 import { toMindmanager } from "./mindmanager";
+import { toMindomo } from "./mindomo";
 import { toWisemapping } from "./wisemapping";
 import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
@@ -602,6 +603,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
           { label: "OPML (.opml)", on: () => saveFile(fileName("opml"), "opml", toOpml(park().roots)) },
           { label: "FreeMind (.mm)", on: () => saveFile(fileName("mm"), "mm", toFreemind(park().roots)) },
           { label: "MindManager (.mmap)", on: () => saveFile(fileName("mmap"), "mmap", toMindmanager(park().roots)) },
+          { label: "Mindomo (.mom)", on: () => saveFile(fileName("mom"), "mom", toMindomo(park().roots)) },
           { label: "WiseMapping (.wxml)", on: () => saveFile(fileName("wxml"), "wxml", toWisemapping(park().roots)) },
           { label: "Image (.png)", on: () => exportImage("png") },
           { label: "Document (.pdf)", on: () => exportImage("pdf") },

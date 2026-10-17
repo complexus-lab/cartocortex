@@ -51,6 +51,12 @@ test("documents are written and read in the format their extension names", async
   expect(backWxml.roots.map((r) => r.text)).toEqual(["Plan"]); // one map per file; the sheets after it open as free branches
   expect(backWxml.roots[0].children[0].text).toBe("child");
   expect(backWxml.roots[0].children.some((c) => c.float && c.text === "Second")).toBe(true);
+
+  const mom = docBytes("/tmp/plan.mom", roots, 1);
+  expect(new TextDecoder().decode(mom.slice(0, 2))).toBe("PK"); // a zip
+  const backMom = await parseDoc("plan.mom", mom);
+  expect(backMom.roots.map((r) => r.text)).toEqual(["Plan", "Second"]); // one map per file; the sheets after it re-open as sheets
+  expect(backMom.roots[0].children[0].text).toBe("child");
 });
 
 const store = new Map<string, string>();
