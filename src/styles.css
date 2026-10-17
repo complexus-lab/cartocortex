@@ -100,3 +100,6 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .rich:empty::before { content: attr(data-placeholder); color: var(--muted); }
 .rich.notes { white-space: pre-wrap; min-height: 120px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--panel); cursor: text; }
 .rich.notes:focus { border-color: var(--accent); }
+
+/* Fishbone: branches grow leftwards, so the fold chip sits on the left edge. */
+.node.flow-fish .fold { right: auto; left: -10px; }

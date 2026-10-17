@@ -71,8 +71,52 @@ test("summaries are only drawn in sideways layouts", () => {
 });
 
 test("xmind export/import keeps the structure", async () => {
-  for (const kind of ["right", "map", "down", "tree"] as const) {
+  for (const kind of ["right", "map", "down", "tree", "fish"] as const) {
     const back = await importXmindSheets(exportXmind({ ...mk("r"), layout: kind }));
     expect(back[0].layout ?? "right").toBe(kind);
   }
+});
+
+function fishbone() {
+  const [a, b, c, d, a1, a1x, a2, b1] = ["a", "b", "c", "d", "a1", "a1x", "a2", "b1"].map((t) => mk(t));
+  let r: Node = { ...mk("effect"), layout: "fish" };
+  for (const n of [a, b, c, d]) r = addChild(r, r.id, n);
+  for (const n of [a1, a2]) r = addChild(r, a.id, n);
+  r = addChild(r, a1.id, a1x);
+  r = addChild(r, b.id, b1);
+  return { r, a, b, c, d, a1, a1x, a2, b1 };
+}
+
+test("fishbone: head on the right, topics alternate above and below the spine, nothing overlaps", () => {
+  const { r, a, b, c, d, a1x, a2 } = fishbone();
+  const boxes = layout(r);
+  const by = Object.fromEntries(boxes.map((x) => [x.id, x]));
+  const mid = (id: string) => by[id].y + by[id].h / 2;
+  expect(boxes.every((x) => x.flow === "fish")).toBe(true);
+  expect([by[r.id].x, mid(r.id)]).toEqual([0, 0]);
+  expect([mid(a.id) < 0, mid(b.id) > 0, mid(c.id) < 0, mid(d.id) > 0]).toEqual([true, true, true, true]);
+  expect(boxes.filter((x) => x.id !== r.id).every((x) => x.x + x.w <= 0)).toBe(true); // everything is left of the head
+  expect(by[c.id].x).toBeLessThan(by[a.id].x); // later columns run further left
+  expect(by[a.id].anchor).toEqual(by[b.id].anchor); // a and b share a column, so their bones meet the spine at the same point
+  expect(by[a.id].anchor!.y).toBe(0);
+  expect(by[a2.id].anchor!.y).toBe(mid(a2.id)); // a sub-topic's rib is horizontal
+  expect(by[a1x.id].anchor).toBeUndefined(); // deeper rows hang off their parent
+  expect(by[a1x.id].x + by[a1x.id].w).toBeLessThan(by[by[a1x.id].parent!].x);
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const p = boxes[i], q = boxes[j];
+      const apart = p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y;
+      expect(apart, `${p.id} overlaps ${q.id}`).toBe(true);
+    }
+});
+
+test("fishbone: arrow keys walk the bones in document order", () => {
+  const { r, a, b, a1, a2 } = fishbone();
+  const boxes = layout(r);
+  expect(neighbour(r, boxes, r.id, "left")).toBe(a.id);
+  expect(neighbour(r, boxes, a.id, "right")).toBe(r.id);
+  expect(neighbour(r, boxes, a.id, "left")).toBe(a1.id);
+  expect(neighbour(r, boxes, a.id, "down")).toBe(a1.id); // next in document order
+  expect(neighbour(r, boxes, a2.id, "down")).toBe(b.id);
+  expect(neighbour(r, boxes, a.id, "up")).toBe(r.id); // document order: the head comes first
 });

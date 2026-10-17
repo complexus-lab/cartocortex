@@ -22,7 +22,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "map" | "down" | "tree"; // logic chart, two-sided map, org chart, tree chart
+  layout?: "right" | "map" | "down" | "tree" | "fish"; // logic chart, two-sided map, org chart, tree chart, fishbone
   theme?: string;
   title?: string; // sheet name (tab label); falls back to the central topic text
   rels?: Rel[];
@@ -34,7 +34,8 @@ export type Box = {
   parent?: string; depth: number;
   side: 1 | -1; // which side of the root the node grows towards
   branch: number; // index of the top-level ancestor (-1 for the root)
-  flow: "right" | "down" | "tree"; // how branches run: sideways, top-down (org chart) or an indented list (tree chart)
+  flow: "right" | "down" | "tree" | "fish"; // how branches run: sideways, top-down (org chart), an indented list (tree chart) or along a fishbone
+  anchor?: { x: number; y: number }; // fishbone only: where this topic's connector meets its bone or the spine
 };
 
 export const mk = (text = ""): Node => ({ id: crypto.randomUUID(), text, children: [] });
@@ -167,17 +168,67 @@ function indented(root: Node): Raw[] {
   return out;
 }
 
+const FISH = { START: 36, GAP: 16, COLGAP: 40, SIDE: 10, NEST: 22 };
+
+/**
+ * Fishbone: the root is the head on the right. Top-level topics alternate above and below the spine, each on a
+ * slanted bone, with their descendants stacked as rows between the topic and the spine; rows of deeper levels
+ * hang to the left of their parent. Coordinates are relative to the head, which sits at x = 0.
+ */
+function fishbone(root: Node): Raw[] {
+  const rowH = H + 8;
+  const out: Raw[] = [{ id: root.id, x: 0, y: -H / 2, w: widthOf(root), h: H, depth: 0 }];
+  const labels = root.collapsed ? [] : root.children;
+
+  /** One top-level topic and its descendants, positioned relative to the point where its bone meets the spine. */
+  const group = (label: Node, sign: 1 | -1): Raw[] => {
+    const rows: { n: Node; d: number; parent: string }[] = [];
+    const walk = (n: Node, d: number) => {
+      if (n.collapsed) return;
+      for (const c of n.children) (rows.push({ n: c, d, parent: n.id }), walk(c, d + 1));
+    };
+    walk(label, 1);
+    const dl = rowH * (rows.length + 1) + FISH.GAP; // spine to the topic's centre
+    const slant = dl * 0.55;
+    const edge = dl - H / 2; // spine to the topic's inner edge, where the bone starts
+    const boneX = (y: number) => (-slant * Math.abs(y)) / edge;
+    const lw = widthOf(label);
+    const boxes: Raw[] = [{ id: label.id, x: -slant - lw / 2, y: sign * dl - H / 2, w: lw, h: H, parent: root.id, depth: 1, anchor: { x: 0, y: 0 } }];
+    const at = new Map<string, Raw>([[label.id, boxes[0]]]);
+    rows.forEach((r, j) => {
+      const yc = sign * (rowH * (rows.length - j) + FISH.GAP);
+      const w = widthOf(r.n);
+      const onBone = r.d === 1;
+      const right = onBone ? boneX(yc) - FISH.SIDE : at.get(r.parent)!.x - FISH.NEST;
+      const b: Raw = { id: r.n.id, x: right - w, y: yc - H / 2, w, h: H, parent: r.parent, depth: r.d + 1, ...(onBone ? { anchor: { x: boneX(yc), y: yc } } : {}) };
+      boxes.push(b);
+      at.set(r.n.id, b);
+    });
+    return boxes;
+  };
+
+  // Columns run leftwards from the head; the first topic goes above the spine, the next below it, and so on.
+  let cursor = -FISH.START;
+  for (let k = 0; k < labels.length; k += 2) {
+    const col = [group(labels[k], -1), ...(labels[k + 1] ? [group(labels[k + 1], 1)] : [])].flat();
+    const a = cursor - Math.max(0, ...col.map((b) => b.x + b.w)); // keep the column's right side clear of what is already placed
+    for (const b of col) out.push({ ...b, x: b.x + a, anchor: b.anchor && { x: b.anchor.x + a, y: b.anchor.y } });
+    cursor = a + Math.min(...col.map((b) => b.x)) - FISH.COLGAP;
+  }
+  return out;
+}
+
 /**
  * "right": everything grows right. "map": top-level branches split between right and left of the root.
- * "down": org chart. "tree": indented tree chart.
+ * "down": org chart. "tree": indented tree chart. "fish": fishbone.
  */
 export function layout(root: Node): Box[] {
   const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
-  const flow: Box["flow"] = root.layout === "down" ? "down" : root.layout === "tree" ? "tree" : "right";
+  const flow: Box["flow"] = root.layout === "down" ? "down" : root.layout === "tree" ? "tree" : root.layout === "fish" ? "fish" : "right";
   const out: Box[] = [];
 
   if (flow !== "right") {
-    const raw = (flow === "down" ? vertical : indented)({ ...root, children: kids });
+    const raw = { down: vertical, tree: indented, fish: fishbone }[flow]({ ...root, children: kids });
     out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
   } else {
     const cut = root.layout === "map" && !root.collapsed ? Math.ceil(kids.length / 2) : kids.length;
@@ -220,6 +271,12 @@ export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "r
     if (dir === "down") return firstKid();
     const row = boxes.filter((b) => b.flow === "down" && b.depth === me.depth).sort((a, b) => a.x - b.x);
     return (row[row.findIndex((b) => b.id === id) + (dir === "right" ? 1 : -1)] ?? me).id;
+  }
+  if (me.flow === "fish") {
+    if (dir === "right") return me.parent ?? id; // towards the head
+    if (dir === "left") return firstKid();
+    const order = boxes.filter((b) => b.flow === "fish"); // document order
+    return (order[order.findIndex((b) => b.id === id) + (dir === "down" ? 1 : -1)] ?? me).id;
   }
   if (me.flow === "tree") {
     if (dir === "left") return me.parent ?? id;

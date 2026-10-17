@@ -147,6 +147,7 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   map: "org.xmind.ui.map.clockwise",
   down: "org.xmind.ui.org-chart.down",
   tree: "org.xmind.ui.tree.right",
+  fish: "org.xmind.ui.fishbone.rightHeaded",
 };
 
 const toSheet = (root: Node, i: number): XSheet => ({
@@ -177,8 +178,9 @@ export async function importXmindSheets(bytes: Uint8Array): Promise<Node[]> {
     .map((sh) => {
       const root = fromX(sh.rootTopic!);
       const sc = sh.rootTopic!.structureClass ?? "";
-      // Other structures (fishbone, matrix, timeline…) come in as the default logic chart.
-      if (sc.includes("org-chart")) root.layout = "down";
+      // Other structures (matrix, timeline…) come in as the default logic chart. Fishbone keeps its head on the right.
+      if (sc.includes("fishbone")) root.layout = "fish";
+      else if (sc.includes("org-chart")) root.layout = "down";
       else if (sc.includes("tree")) root.layout = "tree";
       else if (sc.includes("map")) root.layout = "map";
       if (sh.title) root.title = sh.title;

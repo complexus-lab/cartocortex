@@ -485,6 +485,7 @@ export default function App() {
           <option value="map">Map (both sides)</option>
           <option value="down">Org chart (down)</option>
           <option value="tree">Tree (indented)</option>
+          <option value="fish">Fishbone</option>
         </select>
         <select value={s.root.theme ?? "classic"} onChange={(e) => setDocProp({ theme: e.target.value })} title="Theme">
           {Object.entries(THEMES).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}

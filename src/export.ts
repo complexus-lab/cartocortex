@@ -17,6 +17,12 @@ export function branchD(b: Box, p: Box) {
     const x0 = p.x + p.w / 2, y0 = p.y + p.h, x1 = b.x + b.w / 2, my = (y0 + b.y) / 2;
     return `M${x0} ${y0} C${x0} ${my} ${x1} ${my} ${x1} ${b.y}`;
   }
+  if (b.flow === "fish") {
+    const a = b.anchor, my = b.y + b.h / 2;
+    if (a && b.depth === 1) return `M${b.x + b.w / 2} ${a.y > b.y ? b.y + b.h : b.y}L${a.x} ${a.y}H${p.x}`; // down the bone, then along the spine to the head
+    if (a) return `M${b.x + b.w} ${my}L${a.x} ${a.y}`; // a short rib onto the bone
+    return `M${b.x + b.w} ${my}H${p.x - 11}V${p.y + p.h / 2}H${p.x}`; // deeper rows hang off their parent
+  }
   if (b.flow === "tree") return `M${p.x + 14} ${p.y + p.h}V${b.y + b.h / 2}H${b.x}`; // elbow: down the parent's edge, then across
   const left = b.side === -1;
   const x0 = left ? p.x : p.x + p.w, y0 = p.y + p.h / 2, x1 = left ? b.x + b.w : b.x, y1 = b.y + b.h / 2, mx = (x0 + x1) / 2;
