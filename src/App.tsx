@@ -8,6 +8,7 @@ import { toOpml } from "./outline-io";
 import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
 import { customColors, customTheme } from "./theme";
+import { Menu } from "./Menu";
 import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
@@ -35,12 +36,10 @@ const THEMES: Record<string, { name: string; root: string; accent: string; palet
 const ICONS = ["⭐", "❗", "❓", "✅", "❌", "💡", "🔥", "🚩", "⚠️", "❤️"];
 const SHAPES = [["round", "Round"], ["rect", "Box"], ["line", "Line"]] as const;
 
-// Extra windows (File > New window, or Open while a map is already open) carry ?w=1 and neither load nor write the autosave of the main window.
-const QUERY = new URLSearchParams(location.search), EXTRA = QUERY.has("w");
-const KEY = "mindmap.autosave";
-const load = (): Book => {
+export const KEY = "mindmap.autosave";
+const load = (primary: boolean): Book => {
   try {
-    if (EXTRA) throw 0;
+    if (!primary) throw 0; // only the first tab restores and keeps the autosave
     return parseBook(localStorage.getItem(KEY) ?? "");
   } catch {
     return { roots: [{ ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] }], cur: 0 };
@@ -74,9 +73,17 @@ async function openLink(raw: string) {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
-export default function App() {
+export type AppProps = {
+  active: boolean; // only the visible tab handles keys and sets the window title
+  primary: boolean;
+  openPath?: string; // a file to load when the tab is created
+  onMeta: (name: string, dirty: boolean) => void;
+  openTab: (path: string) => void;
+};
+
+export default function App({ active, primary, openPath, onMeta, openTab }: AppProps) {
   const [sheets, setSheets] = useState<Sheets>(() => {
-    const b = load();
+    const b = load(primary);
     return { roots: b.roots, hist: b.roots.map(emptyHist), cur: b.cur };
   });
   const [s, setS] = useState<S>(() => {
@@ -143,7 +150,7 @@ export default function App() {
   useEffect(() => {
     const json = bookJson(park().roots, sheets.cur);
     try {
-      if (!EXTRA) localStorage.setItem(KEY, json);
+      if (primary) localStorage.setItem(KEY, json);
     } catch {
       /* storage unavailable: autosave is best-effort */
     }
@@ -279,17 +286,12 @@ export default function App() {
     const own = keepsPath(f.name);
     markSaved(own ? f.path : null, own ? bookJson(book.roots, book.cur) : "");
   };
-  const occupied = useRef(EXTRA && QUERY.has("open")); // this window already holds a file, so another one opens beside it
-  const newWindow = async (path?: string) => {
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    const w = new WebviewWindow(`w${Date.now()}`, { url: `/?w=1${path ? `&open=${encodeURIComponent(path)}` : ""}`, title: "Cartocortex", width: 1100, height: 720 });
-    w.once("tauri://error", (e) => alert(`Could not open a new window: ${String(e.payload)}`));
-  };
+  const occupied = useRef(!!openPath); // this tab already holds a file, so another one opens in a new tab
   const open = async (path?: string) => {
     try {
       const f = path ? await readPath(path) : await pickOpen();
       if (!f) return;
-      if (isTauri && f.path && (occupied.current || dirtyRef.current || docPath)) return await newWindow(f.path);
+      if (isTauri && f.path && (occupied.current || dirtyRef.current || docPath)) return openTab(f.path);
       occupied.current = true;
       await loadOpened(f);
     } catch (e) {
@@ -297,8 +299,7 @@ export default function App() {
     }
   };
   useEffect(() => {
-    const p = QUERY.get("open");
-    if (EXTRA && p) open(p);
+    if (openPath) readPath(openPath).then(loadOpened).catch((e) => alert(`Could not open file: ${(e as Error).message}`));
   }, []);
   const startFrom = async (root: Node) => {
     if (dirtyRef.current && !(await confirmDiscard())) return;
@@ -310,9 +311,11 @@ export default function App() {
   // The window title shows the file name, with a bullet while there are unsaved changes.
   useEffect(() => {
     const title = `${dirty ? "• " : ""}${docPath ? baseName(docPath) : "Untitled"} — Cartocortex`;
+    onMeta(docPath ? baseName(docPath) : "Untitled", dirty);
+    if (!active) return;
     document.title = title;
     if (isTauri) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().setTitle(title)).catch(() => {});
-  }, [docPath, dirty]);
+  }, [docPath, dirty, active]);
 
   // Custom theme colours preview live; half a second after the last change they are saved as one undo step.
   useEffect(() => {
@@ -332,7 +335,7 @@ export default function App() {
     }
   };
   useEffect(() => {
-    if (!preview) return;
+    if (!preview || !active) return;
     const close = (e: KeyboardEvent) => e.key === "Escape" && setPreview(null);
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
@@ -407,7 +410,7 @@ export default function App() {
     setView({ k, x: (el.clientWidth - (x1 - x0) * k) / 2 - x0 * k, y: (el.clientHeight - (y1 - y0) * k) / 2 - y0 * k });
   };
   const fit = () => fitTo([...boxes, ...sums.map(({ g }) => ({ ...g.label }) as Box)]); // summary labels sit outside the topic boxes
-  useEffect(fit, [doc, s.root.layout]);
+  useEffect(() => { if (active) fit(); }, [doc, s.root.layout, active]); // a hidden tab has no size to fit to
 
   const startPresenting = () => {
     setMode("map");
@@ -437,6 +440,7 @@ export default function App() {
 
   // Keyboard-first editing (XMind-style).
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (present !== null) {
         const next = ["ArrowRight", "ArrowDown", " ", "Enter", "PageDown"], prev = ["ArrowLeft", "ArrowUp", "Backspace", "PageUp"];
@@ -475,6 +479,7 @@ export default function App() {
         arrowup: () => go("up"),
         arrowdown: () => go("down"),
       };
+      if ((k === "enter" || k === " ") && (e.target as HTMLElement).closest("button")) return; // a focused button keeps Enter/Space for itself
       if (actions[k]) (e.preventDefault(), actions[k]());
     };
     window.addEventListener("keydown", onKey);
@@ -576,54 +581,63 @@ export default function App() {
   return (
     <div className={`app${present !== null ? " present" : ""}`} style={{ "--accent": theme.accent } as React.CSSProperties}>
       <div className="toolbar">
-        <button onClick={newChild}>Child <kbd>Tab</kbd></button>
-        <button onClick={newSibling}>Sibling <kbd>↵</kbd></button>
-        <button onClick={del}>Delete <kbd>⌫</kbd></button>
-        <button onClick={floatAtCentre} title="Free-standing topic (or double-click the canvas)">Float</button>
+        <Menu label="File" items={[
+          { label: "New map", kbd: "⌘N", on: newDoc },
+          { label: "Open…", kbd: "⌘O", on: () => open() },
+          { label: "Save", kbd: "⌘S", on: () => saveDoc() },
+          ...(isTauri ? [{ label: "Save as…", kbd: "⇧⌘S", on: () => saveDoc(true) }] : []),
+          { heading: "New from template" },
+          ...TEMPLATES.map((x) => ({ label: x.name, on: () => startFrom(x.build()) })),
+          ...(isTauri && recent.length ? [{ heading: "Recent" }, ...recent.map((p) => ({ label: baseName(p), title: p, on: () => open(p) }))] : []),
+          { heading: "Export" },
+          { label: "XMind (.xmind)", on: () => saveFile(fileName("xmind"), "xmind", exportXmind(park().roots)) },
+          { label: "Markdown (.md)", on: () => saveFile(fileName("md"), "md", toMarkdown(s.root)) },
+          { label: "OPML (.opml)", on: () => saveFile(fileName("opml"), "opml", toOpml(park().roots)) },
+          { label: "Image (.png)", on: () => exportImage("png") },
+          { label: "Document (.pdf)", on: () => exportImage("pdf") },
+        ]} />
+        <Menu label="Insert" items={[
+          { label: "Child topic", kbd: "Tab", on: newChild },
+          { label: "Sibling topic", kbd: "↵", on: newSibling },
+          { label: "Floating topic", title: "Free-standing topic (or double-click the canvas)", on: floatAtCentre },
+          "-",
+          { label: linking ? "Relationship: pick the target…" : "Relationship", title: "Choose this, then click the target topic", on: () => setLinking(!linking) },
+          { label: "Boundary", checked: !!s.root.bounds?.includes(s.sel), on: toggleBound },
+          {
+            label: summarizing ? "Summary: pick the range end…" : "Summary",
+            title: "Select several sibling topics first, or choose this and then click the last topic of the range",
+            on: () => {
+              const span = siblingSpan(s.root, ids);
+              if (span) commit((r) => addSummary(r, span[0], span[1]));
+              else setSummarizing(!summarizing);
+            },
+          },
+        ]} />
+        <Menu label="View" items={[
+          { heading: "Structure" },
+          ...([["right", "Logic (right)"], ["left", "Logic (left)"], ["map", "Map (both sides)"], ["down", "Org chart (down)"], ["tree", "Tree (indented)"], ["fish", "Fishbone"], ["line", "Timeline"], ["brace", "Brace"], ["matrix", "Matrix"]] as const).map(([v, l]) => ({
+            label: l, checked: (s.root.layout ?? "right") === v, on: () => setDocProp({ layout: v }),
+          })),
+          { heading: "Theme" },
+          ...[...Object.entries(THEMES).map(([id, t]) => [id, t.name]), ["custom", "Custom…"]].map(([id, name]) => ({
+            label: name, checked: (s.root.theme ?? "classic") === id,
+            on: () => {
+              setDraft(null);
+              // Choosing "Custom" starts from the colours you are looking at now.
+              setDocProp(id === "custom" && !s.root.themeColors ? { theme: id, themeColors: [theme.root, ...theme.palette.slice(0, 6)] } : { theme: id });
+            },
+          })),
+          "-",
+          { label: "Outline view", checked: mode === "outline", on: () => setMode(mode === "map" ? "outline" : "map") },
+          { label: "Side panel", checked: panel, on: () => setPanel(!panel) },
+          { label: "Fit map to window", disabled: mode === "outline", on: fit },
+          { label: "Present", on: startPresenting },
+        ]} />
         <span className="sep" />
-        <button onClick={undo} disabled={!s.past.length}>Undo</button>
-        <button onClick={redo} disabled={!s.future.length}>Redo</button>
-        <span className="sep" />
-        <button className={linking ? "on" : ""} onClick={() => setLinking(!linking)} title="Click this, then click the target topic">
-          {linking ? "Pick target…" : "Relationship"}
-        </button>
-        <button className={s.root.bounds?.includes(s.sel) ? "on" : ""} onClick={toggleBound}>Boundary</button>
-        <button
-          className={summarizing ? "on" : ""}
-          onClick={() => {
-            const span = siblingSpan(s.root, ids);
-            if (span) commit((r) => addSummary(r, span[0], span[1]));
-            else setSummarizing(!summarizing);
-          }}
-          title="Select several sibling topics first, or click this and then the last topic of the range"
-        >
-          {summarizing ? "Pick range end…" : "Summary"}
-        </button>
-        <span className="sep" />
-        <select value={s.root.layout ?? "right"} onChange={(e) => setDocProp({ layout: e.target.value as Node["layout"] })} title="Structure">
-          <option value="right">Logic (right)</option>
-          <option value="left">Logic (left)</option>
-          <option value="map">Map (both sides)</option>
-          <option value="down">Org chart (down)</option>
-          <option value="tree">Tree (indented)</option>
-          <option value="fish">Fishbone</option>
-          <option value="line">Timeline</option>
-          <option value="brace">Brace</option>
-          <option value="matrix">Matrix</option>
-        </select>
-        <select
-          value={s.root.theme ?? "classic"}
-          title="Theme"
-          onChange={(e) => {
-            const v = e.target.value;
-            setDraft(null);
-            // Choosing "Custom" starts from the colours you are looking at now.
-            setDocProp(v === "custom" && !s.root.themeColors ? { theme: v, themeColors: [theme.root, ...theme.palette.slice(0, 6)] } : { theme: v });
-          }}
-        >
-          {Object.entries(THEMES).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}
-          <option value="custom">Custom…</option>
-        </select>
+        <button onClick={undo} disabled={!s.past.length} title="Undo (⌘Z)">↶ Undo</button>
+        <button onClick={redo} disabled={!s.future.length} title="Redo (⇧⌘Z)">↷ Redo</button>
+        <button onClick={del} title="Delete the selected topic (⌫)">Delete</button>
+        <span className="grow" />
         <input
           ref={searchBox}
           className="search"
@@ -635,32 +649,7 @@ export default function App() {
             if (e.key === "Escape") (setQ(""), e.currentTarget.blur());
           }}
         />
-        <span className="sep" />
-        <button onClick={newDoc} title="New map (⌘N)">New</button>
-        <select value="" title="New map from a template" onChange={(e) => TEMPLATES[Number(e.target.value)] && startFrom(TEMPLATES[Number(e.target.value)].build())}>
-          <option value="">Template…</option>
-          {TEMPLATES.map((x, i) => <option key={x.name} value={i}>{x.name}</option>)}
-        </select>
-        <button onClick={() => open()} title="Open a map (⌘O); opens beside the current one if it holds a file">Open…</button>
-        {isTauri && <button onClick={() => newWindow()} title="Start a new map in its own window">New window</button>}
-        {isTauri && recent.length > 0 && (
-          <select value="" title="Recent files" onChange={(e) => e.target.value && open(e.target.value)}>
-            <option value="">Recent…</option>
-            {recent.map((p) => <option key={p} value={p} title={p}>{baseName(p)}</option>)}
-          </select>
-        )}
         <button className={dirty ? "on" : ""} onClick={() => saveDoc()} title={dirty ? "Save: unsaved changes (⌘S)" : "Save (⌘S)"}>Save</button>
-        {isTauri && <button onClick={() => saveDoc(true)} title="Save under a new name (⇧⌘S)">Save as…</button>}
-        <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(park().roots))}>Export XMind</button>
-        <button onClick={() => saveFile(fileName("md"), "md", toMarkdown(s.root))}>Export MD</button>
-        <button onClick={() => saveFile(fileName("opml"), "opml", toOpml(park().roots))}>Export OPML</button>
-        <button onClick={() => exportImage("png")}>PNG</button>
-        <button onClick={() => exportImage("pdf")}>PDF</button>
-        <span className="sep" />
-        <button className={mode === "outline" ? "on" : ""} onClick={() => setMode(mode === "map" ? "outline" : "map")}>Outline</button>
-        <button onClick={startPresenting}>Present</button>
-        <button onClick={fit} disabled={mode === "outline"}>Fit</button>
-        <button className={panel ? "on" : ""} onClick={() => setPanel(!panel)}>Panel</button>
       </div>
       <div className="tabs">
         {sheets.roots.map((r0, i) => {

@@ -2,7 +2,7 @@
 
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
-Several maps at once (desktop app): Open… puts a map in its own window when the current window already holds a file or unsaved work, and "New window" starts a blank one. Extra windows do not touch the main window's autosave.
+Tabs and menus: the toolbar is three menus (File with templates, recent files and export; Insert; View with structure, theme and panels) plus Undo, Redo, Delete, Find and Save. Each map opens in its own tab (a blank tab is reused; Open… puts a map in a new tab when the current one holds a file or unsaved work); the second row of tabs is the sheets inside one map. Only the first tab keeps the autosave.
 
 ## Download
 
