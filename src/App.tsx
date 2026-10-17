@@ -6,6 +6,7 @@ import {
 import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
 import { downscale } from "./image";
+import { TEMPLATES } from "./templates";
 import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
@@ -282,12 +283,12 @@ export default function App() {
       alert(`Could not open file: ${(e as Error).message}`);
     }
   };
-  const newDoc = async () => {
+  const startFrom = async (root: Node) => {
     if (dirtyRef.current && !(await confirmDiscard())) return;
-    const root = { ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] };
     openSheet(0, { roots: [root], hist: [emptyHist(root)], cur: 0 });
     markSaved(null, bookJson([root], 0));
   };
+  const newDoc = () => startFrom({ ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] });
 
   // The window title shows the file name, with a bullet while there are unsaved changes.
   useEffect(() => {
@@ -599,6 +600,10 @@ export default function App() {
         />
         <span className="sep" />
         <button onClick={newDoc} title="New map (⌘N)">New</button>
+        <select value="" title="New map from a template" onChange={(e) => TEMPLATES[Number(e.target.value)] && startFrom(TEMPLATES[Number(e.target.value)].build())}>
+          <option value="">Template…</option>
+          {TEMPLATES.map((x, i) => <option key={x.name} value={i}>{x.name}</option>)}
+        </select>
         <button onClick={() => open()} title="Open a map (⌘O)">Open…</button>
         {isTauri && recent.length > 0 && (
           <select value="" title="Recent files" onChange={(e) => e.target.value && open(e.target.value)}>
