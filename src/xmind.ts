@@ -1,6 +1,6 @@
 import { Node } from "./model";
 import { fromMarkers, progressMarker } from "./task";
-import { layoutOf, sheetsFromXml } from "./xmindxml";
+import { layoutOf, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
 
 // .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
@@ -106,29 +106,32 @@ const styleOf = (n: Node): XTopic["style"] => {
   return Object.keys(properties).length ? { id: crypto.randomUUID(), properties } : undefined;
 };
 
-const toX = (n: Node): XTopic => ({
+/** `known` holds every topic id in the file: a link to another topic is only written if its target is there. */
+const toX = (n: Node, known: Set<string>): XTopic => ({
   id: n.id,
   class: "topic",
   title: n.text,
-  ...(n.link ? { href: n.link } : {}),
+  // XMind has one href per topic: an outside link wins over a link to another topic.
+  ...(n.link ? { href: n.link } : n.topicLink && known.has(n.topicLink) ? { href: `xmind:#${n.topicLink}` } : {}),
   ...(markersOf(n).length ? { markers: markersOf(n) } : {}),
   ...(styleOf(n) ? { style: styleOf(n) } : {}),
   ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
   ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
-  ...(n.children.length ? { children: { attached: n.children.map(toX) } } : {}),
+  ...(n.children.length ? { children: { attached: n.children.map((c) => toX(c, known)) } } : {}),
 });
 
-const fromX = (t: XTopic): Node => {
-  const children = (t.children?.attached ?? []).map(fromX);
-  const ids = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
+const fromX = (t: XTopic, ids: Map<string, string>): Node => {
+  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids));
+  const markerIds = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
   const sp = t.style?.properties ?? {};
   const color = hex(sp["fo:color"]?.slice(0, 7)); // XMind may append an alpha pair
-  return {
+  const to = topicHref(t.href);
+  const node: Node = {
     id: crypto.randomUUID(),
     text: t.title ?? "",
     children,
-    ...(t.href ? { link: t.href } : {}),
-    ...fromMarkers(ids),
+    ...(to ? { topicLink: to } : t.href ? { link: t.href } : {}),
+    ...fromMarkers(markerIds),
     ...(sp["fo:font-weight"] === "bold" || Number(sp["fo:font-weight"]) >= 600 ? { bold: true } : {}),
     ...(sp["fo:font-style"] === "italic" ? { italic: true } : {}),
     ...(sp["fo:text-decoration"]?.includes("line-through") ? { strike: true } : {}),
@@ -136,6 +139,8 @@ const fromX = (t: XTopic): Node => {
     ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
     ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
   };
+  ids.set(t.id, node.id); // lets links between topics find their new targets
+  return node;
 };
 
 type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic };
@@ -152,20 +157,24 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   matrix: "org.xmind.ui.spreadsheet.column",
 };
 
-const toSheet = (root: Node, i: number): XSheet => ({
+const toSheet = (root: Node, i: number, known: Set<string>): XSheet => ({
   id: crypto.randomUUID(),
   class: "sheet",
   title: root.title || root.text || `Sheet ${i + 1}`,
   rootTopic: {
-    ...toX(root),
+    ...toX(root, known),
     structureClass: STRUCTURE[root.layout ?? "right"],
   },
 });
 
+const idsOf = (n: Node): string[] => [n.id, ...n.children.flatMap(idsOf)];
+
 /** One XMind sheet per root topic. */
 export function exportXmind(roots: Node | Node[]): Uint8Array {
+  const list = Array.isArray(roots) ? roots : [roots];
+  const known = new Set(list.flatMap(idsOf));
   return zip({
-    "content.json": JSON.stringify((Array.isArray(roots) ? roots : [roots]).map(toSheet)),
+    "content.json": JSON.stringify(list.map((r, i) => toSheet(r, i, known))),
     "metadata.json": "{}",
     "manifest.json": JSON.stringify({ "file-entries": { "content.json": {}, "metadata.json": {} } }),
   });
@@ -180,16 +189,18 @@ export async function importXmindSheets(bytes: Uint8Array): Promise<Node[]> {
     if (!xml) throw new Error("no content.json or content.xml (not an XMind file)");
     return sheetsFromXml(dec.decode(xml));
   }
+  const ids = new Map<string, string>();
   const roots = (JSON.parse(dec.decode(content)) as XSheet[])
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
-      const root = fromX(sh.rootTopic!);
+      const root = fromX(sh.rootTopic!, ids);
       const layout = layoutOf(sh.rootTopic!.structureClass ?? ""); // matrix, timeline… stay the default logic chart
       if (layout) root.layout = layout;
       if (sh.title) root.title = sh.title;
       return root;
     });
   if (!roots.length) throw new Error("no sheet found");
+  resolveTopicLinks(roots, ids);
   return roots;
 }
 

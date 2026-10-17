@@ -11,6 +11,7 @@ export type Node = {
   icon?: string;
   note?: string;
   link?: string;
+  topicLink?: string; // id of another topic this one points to (a link inside the map)
   priority?: number; // task priority, 1 (most urgent) to 9
   progress?: number; // task progress in percent
   bold?: boolean; // text style, per topic
@@ -411,3 +412,10 @@ export function prune(root: Node): Node {
 
 /** Delete topics for good (not a move): also drops anything that referred to them. */
 export const discard = (root: Node, ids: string[]) => prune(removeAll(root, ids));
+
+/** Expand every collapsed ancestor of `id` so the topic can be seen. Returns `root` itself when nothing was collapsed. */
+export function reveal(root: Node, id: string): Node {
+  const above: string[] = [];
+  for (let p = parentOf(root, id); p; p = parentOf(root, p.id)) if (p.collapsed) above.push(p.id);
+  return above.reduce((r, pid) => map(r, pid, (n) => ({ ...n, collapsed: false })), root);
+}

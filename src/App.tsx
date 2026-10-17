@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Node, addChild, addSibling, clone, findNode, discard, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, rename,
-  search, toMarkdown, toggle, visibleIds,
+  reveal, search, toMarkdown, toggle, visibleIds,
 } from "./model";
 import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
@@ -90,6 +90,7 @@ export default function App() {
   const [mode, setMode] = useState<"map" | "outline">("map");
   const [linking, setLinking] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [pickingTopic, setPickingTopic] = useState(false); // choosing the target of a link to a topic
   const [sumSel, setSumSel] = useState<string | null>(null);
   const [sumEdit, setSumEdit] = useState<string | null>(null);
   const [present, setPresent] = useState<number | null>(null); // presentation step, null = off
@@ -150,6 +151,20 @@ export default function App() {
     });
   const setNode = (p: Partial<Node>) => commit((r) => patchAll(r, ids, p));
   const setDocProp = (p: Partial<Node>) => commit((r) => patch(r, r.id, p));
+  // Links between topics: which sheet holds the target, and the target itself, if it still exists.
+  const where = (id: string) => {
+    const roots = park().roots;
+    const sheet = roots.findIndex((r) => findNode(r, id));
+    return sheet < 0 ? null : { sheet, node: findNode(roots[sheet], id)! };
+  };
+  const goTo = (id: string) => {
+    const at = where(id);
+    if (!at) return;
+    if (at.sheet === sheets.cur) return setS((p) => ({ ...p, root: reveal(p.root, id), sel: id }));
+    const b = park();
+    openSheet(at.sheet, { ...b, roots: b.roots.map((r, k) => (k === at.sheet ? reveal(r, id) : r)) });
+    setS((p) => ({ ...p, sel: id }));
+  };
   // With the cursor in a topic or in the notes, style the selected words (browser editing command); otherwise the whole topic.
   const fmt = (cmd: string, topic: Partial<Node>, arg?: string) =>
     (document.activeElement as HTMLElement | null)?.isContentEditable ? document.execCommand(cmd, false, arg) : setNode(topic);
@@ -409,7 +424,7 @@ export default function App() {
         f2: () => setS((p) => ({ ...p, edit: p.sel })),
         delete: del,
         backspace: del,
-        escape: () => (setLinking(false), setSummarizing(false), setRelSel(null), setSumSel(null), setGroup([])),
+        escape: () => (setLinking(false), setPickingTopic(false), setSummarizing(false), setRelSel(null), setSumSel(null), setGroup([])),
         arrowleft: () => go("left"),
         arrowright: () => go("right"),
         arrowup: () => go("up"),
@@ -692,6 +707,11 @@ export default function App() {
                       if (canSummarize(s.root, s.sel, b.id)) commit((r) => addSummary(r, s.sel, b.id));
                       return;
                     }
+                    if (pickingTopic) {
+                      setPickingTopic(false);
+                      if (b.id !== s.sel) commit((r) => patch(r, s.sel, { topicLink: b.id }));
+                      return;
+                    }
                     if (linking && b.id !== s.sel) return linkTo(b.id);
                     if (e.shiftKey || e.metaKey || e.ctrlKey) {
                       const has = picked.has(b.id);
@@ -741,6 +761,16 @@ export default function App() {
                   {n.link && (
                     <span className="badge link" title={`Open ${n.link}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), openLink(n.link!))}>
                       🔗
+                    </span>
+                  )}
+                  {n.topicLink && where(n.topicLink) && (
+                    <span
+                      className="badge link"
+                      title={`Go to “${where(n.topicLink)!.node.text || "…"}”`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => (e.stopPropagation(), goTo(n.topicLink!))}
+                    >
+                      ↪
                     </span>
                   )}
                   {n.children.length > 0 && (
@@ -843,6 +873,17 @@ export default function App() {
             <label>Link</label>
             <input defaultValue={selNode.link ?? ""} placeholder="https://…" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
             {selNode.link && <button onClick={() => openLink(selNode.link!)}>Open link ↗</button>}
+            <label>Link to a topic</label>
+            <div className="row">
+              <button className={pickingTopic ? "on" : ""} onClick={() => setPickingTopic(!pickingTopic)}>
+                {pickingTopic ? "Click a topic…" : selNode.topicLink ? "Change…" : "Pick a topic…"}
+              </button>
+              {selNode.topicLink && where(selNode.topicLink) && <button onClick={() => goTo(selNode.topicLink!)}>Go ↪</button>}
+              {selNode.topicLink && <button onClick={() => setNode({ topicLink: undefined })}>Clear</button>}
+            </div>
+            {selNode.topicLink && (
+              <div className="hint">{where(selNode.topicLink) ? `→ ${where(selNode.topicLink)!.node.text || "…"}` : "The linked topic no longer exists."}</div>
+            )}
             <label>Notes</label>
             <RichEdit
               multiline
