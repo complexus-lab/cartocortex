@@ -37,3 +37,21 @@ test("sibling span of a selection", () => {
   expect(siblingSpan(r, [c.id])).toBeNull(); // needs at least two
   expect(siblingSpan(r, [r.id, a.id])).toBeNull();
 });
+
+import { discard, prune } from "./model";
+import { addSummary } from "./summary";
+
+test("discard prunes relationships, boundaries and summaries that point at deleted topics", () => {
+  const [a, b, c] = [mk("a"), mk("b"), mk("c")];
+  let r = mk("root");
+  for (const n of [a, b, c]) r = addChild(r, r.id, n);
+  r = { ...r, rels: [{ id: "r1", from: a.id, to: b.id }, { id: "r2", from: a.id, to: c.id }], bounds: [b.id, c.id] };
+  r = addSummary(r, a.id, b.id);
+
+  const d = discard(r, [b.id]);
+  expect(d.rels!.map((x) => x.id)).toEqual(["r2"]);
+  expect(d.bounds).toEqual([c.id]);
+  expect(d.summaries).toEqual([]);
+  expect(prune(r)).toBe(r); // nothing dangling: same object, so no undo entry
+  expect(discard(r, [])).toBe(r);
+});

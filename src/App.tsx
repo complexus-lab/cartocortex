@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Box, Node, addChild, addSibling, clone, findNode, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, remove, removeAll, rename,
+  Box, Node, addChild, addSibling, clone, findNode, discard, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, rename,
   search, toMarkdown, toggle, visibleIds,
 } from "./model";
 import { exportXmind, importXmind } from "./xmind";
@@ -80,6 +80,7 @@ export default function App() {
   const [present, setPresent] = useState<number | null>(null); // presentation step, null = off
   const [group, setGroup] = useState<string[]>([]); // multi-selection; only counts while it contains the primary topic
   const [marq, setMarq] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null); // floating topic being moved
   const [relSel, setRelSel] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [hit, setHit] = useState(-1);
@@ -153,6 +154,15 @@ export default function App() {
     const n = mk();
     commit((r) => addSibling(r, s.sel, n), n.id, n.id);
   };
+  /** New free-standing topic with its top-left corner at canvas position (x, y). */
+  const newFloat = (x: number, y: number) => {
+    const n = { ...mk(), float: { x, y } };
+    commit((r) => addChild(r, r.id, n), n.id, n.id);
+  };
+  const floatAtCentre = () => {
+    const el = stage.current;
+    if (el?.clientWidth) newFloat((el.clientWidth / 2 - view.x) / view.k - 28, (el.clientHeight / 2 - view.y) / view.k - 17);
+  };
   const del = () => {
     if (sumSel) {
       commit((r) => removeSummary(r, sumSel));
@@ -165,11 +175,11 @@ export default function App() {
     if (multi) {
       const tops = ids.filter((id) => id !== s.root.id);
       const keep = parentOf(s.root, tops[0])?.id;
-      commit((r) => removeAll(r, tops), keep && !tops.includes(keep) ? keep : s.root.id);
+      commit((r) => discard(r, tops), keep && !tops.includes(keep) ? keep : s.root.id);
       return setGroup([]);
     }
     const p = parentOf(s.root, s.sel);
-    if (p) commit((r) => remove(r, s.sel), p.id);
+    if (p) commit((r) => discard(r, [s.sel]), p.id);
   };
   const copy = () => void (clip.current = selNode);
   const paste = () => {
@@ -323,6 +333,30 @@ export default function App() {
     });
   }, [s.sel, byId]);
 
+  /** Drag a floating topic with the pointer. Releasing over another topic attaches it there. One undo step. */
+  const startFloatDrag = (e: React.PointerEvent, b: Box) => {
+    const startRoot = s.root, k = view.k;
+    const sx = e.clientX, sy = e.clientY;
+    let moved = false;
+    const move = (m: PointerEvent) => {
+      const dx = (m.clientX - sx) / k, dy = (m.clientY - sy) / k;
+      if (!moved && Math.hypot(dx, dy) * k < 4) return; // a click, not a drag
+      moved = true;
+      setDragging(b.id);
+      setS((p) => ({ ...p, root: patch(p.root, b.id, { float: { x: b.x + dx, y: b.y + dy } }) }));
+    };
+    const up = (m: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDragging(null);
+      if (!moved) return;
+      const under = document.elementFromPoint(m.clientX, m.clientY)?.closest<HTMLElement>("[data-id]")?.dataset.id;
+      setS((p) => ({ ...p, root: under && under !== b.id ? moveAll(p.root, [b.id], under) : p.root, past: [...p.past, startRoot], future: [] }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   // Shift-drag on empty canvas draws a selection box; ⌘/Ctrl-drag adds to the current selection.
   const marquee = (e: React.PointerEvent) => {
     const r = stage.current!.getBoundingClientRect();
@@ -369,6 +403,7 @@ export default function App() {
         <button onClick={newChild}>Child <kbd>Tab</kbd></button>
         <button onClick={newSibling}>Sibling <kbd>↵</kbd></button>
         <button onClick={del}>Delete <kbd>⌫</kbd></button>
+        <button onClick={floatAtCentre} title="Free-standing topic (or double-click the canvas)">Float</button>
         <span className="sep" />
         <button onClick={undo} disabled={!s.past.length}>Undo</button>
         <button onClick={redo} disabled={!s.future.length}>Redo</button>
@@ -422,7 +457,15 @@ export default function App() {
       </div>
       <div className="main">
         {mode === "outline" && <Outline root={s.root} sel={s.sel} commit={commit} onSelect={(id) => setS((p) => (p.sel === id ? p : { ...p, sel: id }))} />}
-        <div className="stage" ref={stage} onPointerDown={pan} style={mode === "outline" ? { display: "none" } : undefined}>
+        <div
+          className="stage"
+          ref={stage}
+          onPointerDown={pan}
+          onDoubleClick={(e) => {
+            if (e.target !== e.currentTarget || present !== null) return;
+            const r = e.currentTarget.getBoundingClientRect();
+            newFloat((e.clientX - r.left - view.x) / view.k - 28, (e.clientY - r.top - view.y) / view.k - 17);
+          }} style={mode === "outline" ? { display: "none" } : undefined}>
           <div className="world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
             {bounds.map((id) => {
               const bs = visibleIds(byNode[id]).map((x) => byId[x]);
@@ -457,9 +500,10 @@ export default function App() {
               return (
                 <div
                   key={b.id}
-                  className={`node${b.depth === 0 ? " root" : ""}${picked.has(b.id) ? " sel" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
+                  className={`node${b.depth === 0 ? " root" : ""}${picked.has(b.id) ? " sel" : ""}${dragging === b.id ? " dragging" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
                   style={{ left: b.x, top: b.y, width: b.w, height: b.h, "--c": colorOf(b) } as React.CSSProperties}
-                  draggable={b.depth > 0 && s.edit !== b.id}
+                  data-id={b.id}
+                  draggable={b.depth > 0 && s.edit !== b.id && !n.float}
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     setRelSel(null);
@@ -478,6 +522,7 @@ export default function App() {
                     }
                     if (!picked.has(b.id)) setGroup([]); // pressing inside a multi-selection keeps it, so the whole group can be dragged
                     setS((p) => ({ ...p, sel: b.id, edit: p.edit === b.id ? p.edit : null }));
+                    if (n.float && s.edit !== b.id) startFloatDrag(e, b);
                   }}
                   onClick={(e) => multi && !(e.shiftKey || e.metaKey || e.ctrlKey) && picked.has(b.id) && setGroup([])}
                   onDoubleClick={() => setS((p) => ({ ...p, edit: b.id }))}

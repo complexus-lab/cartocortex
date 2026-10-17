@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Node, addSibling, flat, indent, mk, outdent, remove, rename, toggle } from "./model";
+import { Node, addSibling, discard, flat, indent, mk, outdent, rename, toggle } from "./model";
 
 type Props = {
   root: Node;
@@ -45,7 +45,7 @@ export default function Outline({ root, sel, onSelect, commit }: Props) {
     } else if (e.key === "Backspace" && v === "" && i > 0 && !n.children.length) {
       e.preventDefault();
       const prev = rows[i - 1].n.id;
-      commit((r) => remove(r, n.id), prev);
+      commit((r) => discard(r, [n.id]), prev);
       setFocus(prev);
     }
   };

@@ -38,7 +38,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Floating topics, multiple sheets, clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
+Multiple sheets, clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
 
 ## Added
 
@@ -51,3 +51,5 @@ Summaries: select a topic, click "Summary", then click the last topic of the ran
 Presentation: "Present" goes full-screen and reveals one top-level branch per step (→ / Space / Enter next, ← back, Esc exit); earlier branches dim.
 
 Multi-select: Shift / ⌘ / Ctrl-click toggles topics; Shift-drag on empty canvas draws a selection box (⌘/Ctrl-drag adds to the current selection); ⌘A selects all. Delete, drag-to-reparent, and the Fill / Shape / Marker controls act on the whole selection, and Summary wraps selected siblings in one click. Copy / paste / duplicate still work on the primary topic only.
+
+Floating topics: "Float" (or double-click empty canvas) adds a free-standing topic with no branch to the root. Drag it anywhere; release over another topic to attach it there. In `.xmind` export they become ordinary top-level topics (positions are not kept). Deleting topics also removes relationships, boundaries and summaries that pointed at them.

@@ -11,6 +11,7 @@ export type Node = {
   note?: string;
   link?: string;
   shape?: Shape;
+  float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
   layout?: "right" | "map";
   theme?: string;
@@ -65,13 +66,15 @@ export const remove = (root: Node, id: string): Node =>
 export function moveTo(root: Node, id: string, target: string): Node {
   const moving = findNode(root, id);
   if (!moving || id === root.id || findNode(moving, target)) return root;
-  return addChild(remove(root, id), target, moving);
+  const { float, ...attached } = moving; // a topic dropped onto another one stops floating
+  void float;
+  return addChild(remove(root, id), target, attached);
 }
 
 /** Deep copy with fresh ids; document-level settings are not copied. */
 export const clone = (n: Node): Node => {
-  const { rels, bounds, summaries, layout, theme, ...rest } = n;
-  void rels, bounds, summaries, layout, theme;
+  const { rels, bounds, summaries, layout, theme, float, ...rest } = n;
+  void rels, bounds, summaries, layout, theme, float;
   return { ...rest, id: crypto.randomUUID(), children: n.children.map(clone) };
 };
 
@@ -115,7 +118,7 @@ function half(root: Node): Raw[] {
 
 /** "right": everything grows right. "map": top-level branches split between right and left of the root. */
 export function layout(root: Node): Box[] {
-  const kids = root.children;
+  const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
   const cut = root.layout === "map" && !root.collapsed ? Math.ceil(kids.length / 2) : kids.length;
   const right = half({ ...root, children: kids.slice(0, cut) });
   const out: Box[] = right.map((b) => ({ ...b, side: 1, branch: -1 }));
@@ -127,10 +130,17 @@ export function layout(root: Node): Box[] {
     for (const b of left.slice(1)) out.push({ ...b, x: rw - b.x - b.w, y: b.y + dy, side: -1, branch: -1 });
   }
 
+  for (const f of root.children.filter((c) => c.float)) {
+    const raw = half(f);
+    const dx = f.float!.x - raw[0].x, dy = f.float!.y - raw[0].y;
+    for (const b of raw) out.push({ ...b, x: b.x + dx, y: b.y + dy, depth: b.depth + 1, side: 1, branch: -1 });
+  }
+
+  // Branch index = position among all top-level topics, which also drives colours and presentation steps.
   const branch: Record<string, number> = {};
   for (const b of out) {
     if (b.depth === 0) continue;
-    branch[b.id] = b.depth === 1 ? kids.findIndex((k) => k.id === b.id) : branch[b.parent!];
+    branch[b.id] = b.depth === 1 ? root.children.findIndex((k) => k.id === b.id) : branch[b.parent!];
     b.branch = branch[b.id];
   }
   return out;
@@ -147,7 +157,7 @@ export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "r
     const n = findNode(root, id)!;
     const kids = n.collapsed ? [] : n.children;
     const sideOf = (k: Node) => boxes.find((b) => b.id === k.id)!.side;
-    if (id === root.id) return kids.find((k) => sideOf(k) === toward)?.id ?? id;
+    if (id === root.id) return kids.find((k) => !k.float && sideOf(k) === toward)?.id ?? id;
     return me.side === toward ? (kids[0]?.id ?? id) : (me.parent ?? id);
   }
   const same = boxes.filter((b) => b.depth === me.depth && b.side === me.side).sort((a, b) => a.y - b.y);
@@ -200,3 +210,18 @@ export function moveAll(root: Node, ids: string[], target: string): Node {
   };
   return ids.filter((id) => !inside(id)).reduce((r, id) => moveTo(r, id, target), root);
 }
+
+/** Drop relationships, boundaries and summaries that point at topics which no longer exist. */
+export function prune(root: Node): Node {
+  const alive = new Set<string>();
+  const walk = (n: Node) => (alive.add(n.id), n.children.forEach(walk));
+  walk(root);
+  const rels = root.rels?.filter((r) => alive.has(r.from) && alive.has(r.to));
+  const bounds = root.bounds?.filter((id) => alive.has(id));
+  const summaries = root.summaries?.filter((s) => alive.has(s.from) && alive.has(s.to));
+  const same = rels?.length === root.rels?.length && bounds?.length === root.bounds?.length && summaries?.length === root.summaries?.length;
+  return same ? root : { ...root, rels, bounds, summaries };
+}
+
+/** Delete topics for good (not a move): also drops anything that referred to them. */
+export const discard = (root: Node, ids: string[]) => prune(removeAll(root, ids));
