@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Cartocortex opens and saves the mind maps you choose in your Documents folder and iCloud Drive.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Cartocortex opens and saves the mind maps you choose on your Desktop.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Cartocortex opens the mind maps you choose in your Downloads folder.</string>
+</dict>
+</plist>
