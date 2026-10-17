@@ -222,7 +222,7 @@ export default function App() {
     const k = Math.min(1.5, (el.clientWidth - 100) / (x1 - x0), (el.clientHeight - 100) / (y1 - y0));
     setView({ k, x: (el.clientWidth - (x1 - x0) * k) / 2 - x0 * k, y: (el.clientHeight - (y1 - y0) * k) / 2 - y0 * k });
   };
-  const fit = () => fitTo(boxes);
+  const fit = () => fitTo([...boxes, ...sums.map(({ g }) => ({ ...g.label }) as Box)]); // summary labels sit outside the topic boxes
   useEffect(fit, [doc, s.root.layout]);
 
   const startPresenting = () => {
