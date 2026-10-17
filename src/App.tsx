@@ -90,6 +90,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
     const root = sheets.roots[sheets.cur];
     return { root, past: [], future: [], sel: root.id, edit: null };
   });
+  const [docName, setDocName] = useState<string | null>(null); // file name of an imported map (it has no path to save back to)
   const [docPath, setDocPath] = useState<string | null>(null); // where the document lives on disk (desktop app)
   const [dirty, setDirty] = useState(false); // changed since it was last saved or opened
   const [recent, setRecent] = useState<string[]>(loadRecent);
@@ -281,6 +282,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
   };
   const loadOpened = async (f: Opened) => {
     const book = await parseDoc(f.name, f.bytes);
+    setDocName(f.name);
     openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
     // Any format but our own JSON is an import: the map stays "unsaved", so Save asks for a new file instead of overwriting the original.
     const own = keepsPath(f.name);
@@ -303,6 +305,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
   }, []);
   const startFrom = async (root: Node) => {
     if (dirtyRef.current && !(await confirmDiscard())) return;
+    setDocName(null);
     openSheet(0, { roots: [root], hist: [emptyHist(root)], cur: 0 });
     markSaved(null, bookJson([root], 0));
   };
@@ -310,12 +313,13 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
 
   // The window title shows the file name, with a bullet while there are unsaved changes.
   useEffect(() => {
-    const title = `${dirty ? "• " : ""}${docPath ? baseName(docPath) : "Untitled"} — Cartocortex`;
-    onMeta(docPath ? baseName(docPath) : "Untitled", dirty);
+    const name = docPath ? baseName(docPath) : docName ?? "Untitled";
+    const title = `${dirty ? "• " : ""}${name} — Cartocortex`;
+    onMeta(name, dirty);
     if (!active) return;
     document.title = title;
     if (isTauri) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().setTitle(title)).catch(() => {});
-  }, [docPath, dirty, active]);
+  }, [docPath, docName, dirty, active]);
 
   // Custom theme colours preview live; half a second after the last change they are saved as one undo step.
   useEffect(() => {
