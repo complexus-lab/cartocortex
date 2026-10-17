@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Box, Node, addChild, addSibling, clone, findNode, layout, mk, moveTo, neighbour, parentOf, patch, remove, rename,
+  Box, Node, addChild, addSibling, clone, findNode, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, remove, removeAll, rename,
   search, toMarkdown, toggle, visibleIds,
 } from "./model";
 import { exportXmind, importXmind } from "./xmind";
 import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
-import { addSummary, canSummarize, editSummary, removeSummary, summaryD, summaryGeo } from "./summary";
+import { addSummary, canSummarize, editSummary, removeSummary, siblingSpan, summaryD, summaryGeo } from "./summary";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
 
@@ -78,6 +78,8 @@ export default function App() {
   const [sumSel, setSumSel] = useState<string | null>(null);
   const [sumEdit, setSumEdit] = useState<string | null>(null);
   const [present, setPresent] = useState<number | null>(null); // presentation step, null = off
+  const [group, setGroup] = useState<string[]>([]); // multi-selection; only counts while it contains the primary topic
+  const [marq, setMarq] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [relSel, setRelSel] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [hit, setHit] = useState(-1);
@@ -98,6 +100,10 @@ export default function App() {
   const hits = useMemo(() => search(s.root, q).filter((id) => byId[id]), [s.root, q, byId]);
   const colorOf = (b: Box) => byNode[b.id].color ?? (b.branch < 0 ? theme.root : theme.palette[b.branch % theme.palette.length]);
   const selNode = byNode[s.sel];
+  // Selected topics in layout order. The primary topic (`s.sel`) is always part of it.
+  const ids = useMemo(() => (group.includes(s.sel) ? boxes.filter((b) => group.includes(b.id)).map((b) => b.id) : [s.sel]), [group, s.sel, boxes]);
+  const picked = useMemo(() => new Set(ids), [ids]);
+  const multi = ids.length > 1;
   const sums = useMemo(
     () => (s.root.summaries ?? []).flatMap((x) => {
       const g = summaryGeo(s.root, boxes, x);
@@ -123,7 +129,7 @@ export default function App() {
       const root = fn(p.root);
       return root === p.root ? p : { root, past: [...p.past, p.root], future: [], sel: sel ?? p.sel, edit };
     });
-  const setNode = (p: Partial<Node>) => commit((r) => patch(r, s.sel, p));
+  const setNode = (p: Partial<Node>) => commit((r) => patchAll(r, ids, p));
   const setDocProp = (p: Partial<Node>) => commit((r) => patch(r, r.id, p));
 
   const undo = () =>
@@ -155,6 +161,12 @@ export default function App() {
     if (relSel) {
       commit((r) => patch(r, r.id, { rels: (r.rels ?? []).filter((x) => x.id !== relSel) }));
       return setRelSel(null);
+    }
+    if (multi) {
+      const tops = ids.filter((id) => id !== s.root.id);
+      const keep = parentOf(s.root, tops[0])?.id;
+      commit((r) => removeAll(r, tops), keep && !tops.includes(keep) ? keep : s.root.id);
+      return setGroup([]);
     }
     const p = parentOf(s.root, s.sel);
     if (p) commit((r) => remove(r, s.sel), p.id);
@@ -257,7 +269,7 @@ export default function App() {
       const go = (dir: "left" | "right" | "up" | "down") => setS((p) => ({ ...p, sel: neighbour(p.root, layout(p.root), p.sel, dir) }));
       if (mod) {
         const m: Record<string, () => void> = {
-          z: e.shiftKey ? redo : undo, s: saveJson, o: open, c: copy, v: paste, d: duplicate,
+          z: e.shiftKey ? redo : undo, s: saveJson, o: open, c: copy, v: paste, d: duplicate, a: () => setGroup(boxes.map((b) => b.id)),
           x: () => (copy(), del()),
         };
         if (m[k] && !e.altKey) (e.preventDefault(), m[k]());
@@ -271,7 +283,7 @@ export default function App() {
         f2: () => setS((p) => ({ ...p, edit: p.sel })),
         delete: del,
         backspace: del,
-        escape: () => (setLinking(false), setSummarizing(false), setRelSel(null), setSumSel(null)),
+        escape: () => (setLinking(false), setSummarizing(false), setRelSel(null), setSumSel(null), setGroup([])),
         arrowleft: () => go("left"),
         arrowright: () => go("right"),
         arrowup: () => go("up"),
@@ -311,8 +323,32 @@ export default function App() {
     });
   }, [s.sel, byId]);
 
+  // Shift-drag on empty canvas draws a selection box; ⌘/Ctrl-drag adds to the current selection.
+  const marquee = (e: React.PointerEvent) => {
+    const r = stage.current!.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const base = e.metaKey || e.ctrlKey ? ids : [];
+    const rect = (m: { clientX: number; clientY: number }) => ({ x0: sx, y0: sy, x1: m.clientX - r.left, y1: m.clientY - r.top });
+    const move = (m: PointerEvent) => setMarq(rect(m));
+    const up = (m: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setMarq(null);
+      const q = rect(m);
+      const [ax, bx] = [q.x0, q.x1].sort((a, b) => a - b).map((v) => (v - view.x) / view.k);
+      const [ay, by] = [q.y0, q.y1].sort((a, b) => a - b).map((v) => (v - view.y) / view.k);
+      const hit = boxes.filter((b) => shown(b.id) && b.x < bx && b.x + b.w > ax && b.y < by && b.y + b.h > ay).map((b) => b.id);
+      const all = [...new Set([...base, ...hit])];
+      setGroup(all);
+      if (all.length) setS((p) => ({ ...p, sel: all.includes(p.sel) ? p.sel : all[0], edit: null }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   const pan = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return;
+    if (e.shiftKey || e.metaKey || e.ctrlKey) return marquee(e);
     const start = { px: e.clientX, py: e.clientY, ...view };
     const move = (m: PointerEvent) => setView((v) => ({ ...v, x: start.x + m.clientX - start.px, y: start.y + m.clientY - start.py }));
     const up = () => (window.removeEventListener("pointermove", move), window.removeEventListener("pointerup", up));
@@ -321,6 +357,7 @@ export default function App() {
     setS((p) => ({ ...p, edit: null }));
     setRelSel(null);
     setSumSel(null);
+    setGroup([]);
   };
 
   const rels = (s.root.rels ?? []).filter((r) => byId[r.from] && byId[r.to] && shown(r.from) && shown(r.to));
@@ -340,7 +377,15 @@ export default function App() {
           {linking ? "Pick target…" : "Relationship"}
         </button>
         <button className={s.root.bounds?.includes(s.sel) ? "on" : ""} onClick={toggleBound}>Boundary</button>
-        <button className={summarizing ? "on" : ""} onClick={() => setSummarizing(!summarizing)} title="Click this, then the last topic of the range (it must share a parent with the selected one)">
+        <button
+          className={summarizing ? "on" : ""}
+          onClick={() => {
+            const span = siblingSpan(s.root, ids);
+            if (span) commit((r) => addSummary(r, span[0], span[1]));
+            else setSummarizing(!summarizing);
+          }}
+          title="Select several sibling topics first, or click this and then the last topic of the range"
+        >
           {summarizing ? "Pick range end…" : "Summary"}
         </button>
         <span className="sep" />
@@ -412,7 +457,7 @@ export default function App() {
               return (
                 <div
                   key={b.id}
-                  className={`node${b.depth === 0 ? " root" : ""}${s.sel === b.id ? " sel" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
+                  className={`node${b.depth === 0 ? " root" : ""}${picked.has(b.id) ? " sel" : ""}${n.color ? " filled" : ""}${b.side === -1 ? " left" : ""}${hits.includes(b.id) ? " hit" : ""}${present !== null && b.branch >= 0 && b.branch < present - 1 ? " dim" : ""} shape-${n.shape ?? "round"}`}
                   style={{ left: b.x, top: b.y, width: b.w, height: b.h, "--c": colorOf(b) } as React.CSSProperties}
                   draggable={b.depth > 0 && s.edit !== b.id}
                   onPointerDown={(e) => {
@@ -425,12 +470,23 @@ export default function App() {
                       return;
                     }
                     if (linking && b.id !== s.sel) return linkTo(b.id);
+                    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                      const has = picked.has(b.id);
+                      const next = has ? ids.filter((x) => x !== b.id) : [...ids, b.id];
+                      setGroup(next);
+                      return setS((p) => ({ ...p, sel: has ? (next.at(-1) ?? p.sel) : b.id, edit: null }));
+                    }
+                    if (!picked.has(b.id)) setGroup([]); // pressing inside a multi-selection keeps it, so the whole group can be dragged
                     setS((p) => ({ ...p, sel: b.id, edit: p.edit === b.id ? p.edit : null }));
                   }}
+                  onClick={(e) => multi && !(e.shiftKey || e.metaKey || e.ctrlKey) && picked.has(b.id) && setGroup([])}
                   onDoubleClick={() => setS((p) => ({ ...p, edit: b.id }))}
                   onDragStart={(e) => e.dataTransfer.setData("text/plain", b.id)}
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => commit((r) => moveTo(r, e.dataTransfer.getData("text/plain"), b.id), e.dataTransfer.getData("text/plain"))}
+                  onDrop={(e) => {
+                    const d = e.dataTransfer.getData("text/plain");
+                    commit((r) => moveAll(r, picked.has(d) ? ids : [d], b.id), d);
+                  }}
                 >
                   {n.icon && <span className="mark">{n.icon}</span>}
                   {s.edit === b.id ? (
@@ -489,10 +545,16 @@ export default function App() {
               </div>
             ))}
           </div>
+          {marq && (
+            <div
+              className="marquee"
+              style={{ left: Math.min(marq.x0, marq.x1), top: Math.min(marq.y0, marq.y1), width: Math.abs(marq.x1 - marq.x0), height: Math.abs(marq.y1 - marq.y0) }}
+            />
+          )}
         </div>
         {panel && (
           <aside className="panel" key={s.sel}>
-            <h4>{selNode.text || "Topic"}</h4>
+            <h4>{multi ? `${ids.length} topics` : selNode.text || "Topic"}</h4>
             <label>Fill</label>
             <div className="row">
               {[...theme.palette, "#868e96", "#f1c40f"].map((c) => (
@@ -513,10 +575,14 @@ export default function App() {
               ))}
               <button onClick={() => setNode({ icon: undefined })}>None</button>
             </div>
+            {!multi && (
+              <>
             <label>Link</label>
             <input defaultValue={selNode.link ?? ""} placeholder="https://…" onBlur={(e) => e.target.value !== (selNode.link ?? "") && setNode({ link: e.target.value || undefined })} />
             <label>Notes</label>
             <textarea defaultValue={selNode.note ?? ""} placeholder="Notes for this topic" onBlur={(e) => e.target.value !== (selNode.note ?? "") && setNode({ note: e.target.value || undefined })} />
+              </>
+            )}
           </aside>
         )}
       </div>

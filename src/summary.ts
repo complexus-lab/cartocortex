@@ -49,3 +49,11 @@ export function summaryD(g: SumGeo) {
   const d = g.side, x = g.bx, yc = (g.y0 + g.y1) / 2;
   return `M${x} ${g.y0}H${x + TICK * d}V${g.y1}H${x}M${x + TICK * d} ${yc}H${x + (TICK + STEM) * d}`;
 }
+
+/** First and last sibling of a selection whose topics all share one parent; null otherwise. */
+export function siblingSpan(root: Node, ids: string[]): [string, string] | null {
+  const p = ids.length > 1 ? parentOf(root, ids[0]) : undefined;
+  if (!p) return null;
+  const idx = ids.map((id) => (parentOf(root, id)?.id === p.id ? p.children.findIndex((c) => c.id === id) : -1));
+  return idx.includes(-1) ? null : [p.children[Math.min(...idx)].id, p.children[Math.max(...idx)].id];
+}

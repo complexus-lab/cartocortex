@@ -186,3 +186,17 @@ export function outdent(root: Node, id: string): Node {
   const p = parentOf(root, id);
   return p && p.id !== root.id ? addSibling(remove(root, id), p.id, findNode(root, id)!) : root;
 }
+
+export const patchAll = (root: Node, ids: string[], p: Partial<Node>) => ids.reduce((r, id) => patch(r, id, p), root);
+
+export const removeAll = (root: Node, ids: string[]) => ids.reduce((r, id) => remove(r, id), root);
+
+/** Move several topics under `target`, in the order given. Topics inside another moved topic travel with it. */
+export function moveAll(root: Node, ids: string[], target: string): Node {
+  const set = new Set(ids);
+  const inside = (id: string) => {
+    for (let p = parentOf(root, id); p; p = parentOf(root, p.id)) if (set.has(p.id)) return true;
+    return false;
+  };
+  return ids.filter((id) => !inside(id)).reduce((r, id) => moveTo(r, id, target), root);
+}

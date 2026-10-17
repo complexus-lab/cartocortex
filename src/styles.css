@@ -67,3 +67,5 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .present .node, .present .stage { pointer-events: none; }
 .hud { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 6px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; z-index: 5; }
 .hud button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; cursor: pointer; }
+
+.marquee { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; z-index: 3; }
