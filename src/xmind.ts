@@ -129,7 +129,7 @@ const fromX = (t: XTopic): Node => {
     children,
     ...(t.href ? { link: t.href } : {}),
     ...fromMarkers(ids),
-    ...(sp["fo:font-weight"] === "bold" ? { bold: true } : {}),
+    ...(sp["fo:font-weight"] === "bold" || Number(sp["fo:font-weight"]) >= 600 ? { bold: true } : {}),
     ...(sp["fo:font-style"] === "italic" ? { italic: true } : {}),
     ...(sp["fo:text-decoration"]?.includes("line-through") ? { strike: true } : {}),
     ...(color ? { textColor: color } : {}),
@@ -146,6 +146,7 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   down: "org.xmind.ui.org-chart.down",
   tree: "org.xmind.ui.tree.right",
   fish: "org.xmind.ui.fishbone.rightHeaded",
+  line: "org.xmind.ui.timeline.horizontal",
 };
 
 const toSheet = (root: Node, i: number): XSheet => ({

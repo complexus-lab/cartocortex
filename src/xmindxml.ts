@@ -81,6 +81,7 @@ const allText = (n: XNode): string => n.text.trim() || n.children.map(allText).f
 /** Logic, map, org chart, tree chart and fishbone; anything else (matrix, timeline…) stays the default logic chart. */
 export function layoutOf(structureClass: string): Node["layout"] | undefined {
   if (structureClass.includes("fishbone")) return "fish";
+  if (structureClass.includes("timeline")) return "line"; // every timeline variant opens as the horizontal one
   if (structureClass.includes("org-chart")) return "down";
   if (structureClass.includes("tree")) return "tree";
   if (structureClass.includes("map")) return "map";

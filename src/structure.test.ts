@@ -71,7 +71,7 @@ test("summaries are only drawn in sideways layouts", () => {
 });
 
 test("xmind export/import keeps the structure", async () => {
-  for (const kind of ["right", "map", "down", "tree", "fish"] as const) {
+  for (const kind of ["right", "map", "down", "tree", "fish", "line"] as const) {
     const back = await importXmindSheets(exportXmind({ ...mk("r"), layout: kind }));
     expect(back[0].layout ?? "right").toBe(kind);
   }
@@ -119,4 +119,53 @@ test("fishbone: arrow keys walk the bones in document order", () => {
   expect(neighbour(r, boxes, a.id, "down")).toBe(a1.id); // next in document order
   expect(neighbour(r, boxes, a2.id, "down")).toBe(b.id);
   expect(neighbour(r, boxes, a.id, "up")).toBe(r.id); // document order: the head comes first
+});
+
+function timeline() {
+  const [a, b, c, a1, a1x, a2, b1] = ["a", "b", "c", "a1", "a1x", "a2", "b1"].map((t) => mk(t));
+  let r: Node = { ...mk("start"), layout: "line" };
+  for (const n of [a, b, c]) r = addChild(r, r.id, n);
+  for (const n of [a1, a2]) r = addChild(r, a.id, n);
+  r = addChild(r, a1.id, a1x);
+  r = addChild(r, b.id, b1);
+  return { r, a, b, c, a1, a1x, a2, b1 };
+}
+
+test("timeline: topics sit on the line in order, stacks alternate below and above, nothing overlaps", () => {
+  const { r, a, b, c, a1, a1x, a2, b1 } = timeline();
+  const boxes = layout(r);
+  const by = Object.fromEntries(boxes.map((x) => [x.id, x]));
+  const mid = (id: string) => by[id].y + by[id].h / 2;
+  expect(boxes.every((x) => x.flow === "line")).toBe(true);
+  expect([by[r.id].x, mid(r.id), mid(a.id), mid(b.id), mid(c.id)]).toEqual([0, 0, 0, 0, 0]); // head and topics share the line
+  expect(by[a.id].x).toBeGreaterThan(by[r.id].w);
+  expect(by[a.id].x).toBeLessThan(by[b.id].x);
+  expect(by[b.id].x).toBeLessThan(by[c.id].x);
+  expect(by[a.id].anchor).toEqual({ x: by[r.id].w, y: 0 }); // the line runs from the head to the first topic…
+  expect(by[b.id].anchor).toEqual({ x: by[a.id].x + by[a.id].w, y: 0 }); // …and on from each topic to the next
+  // a's stack hangs below, in document order, indented by depth; b's stack goes above
+  expect(by[a1.id].y).toBeGreaterThan(by[a.id].y);
+  expect(by[a1x.id].y).toBeGreaterThan(by[a1.id].y);
+  expect(by[a2.id].y).toBeGreaterThan(by[a1x.id].y);
+  expect(by[a1.id].x).toBe(by[a.id].x + 24);
+  expect(by[a1x.id].x).toBe(by[a1.id].x + 24);
+  expect(by[b1.id].y).toBeLessThan(by[b.id].y);
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const p = boxes[i], q = boxes[j];
+      expect(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y, `${p.id} overlaps ${q.id}`).toBe(true);
+    }
+});
+
+test("timeline: arrow keys run along the line and into the stacks", () => {
+  const { r, a, b, c, a1, a1x, a2, b1 } = timeline();
+  const boxes = layout(r);
+  const go = (from: string, dir: "left" | "right" | "up" | "down") => neighbour(r, boxes, from, dir);
+  expect([go(r.id, "right"), go(a.id, "right"), go(b.id, "right"), go(c.id, "right")]).toEqual([a.id, b.id, c.id, c.id]);
+  expect([go(c.id, "left"), go(b.id, "left"), go(a.id, "left"), go(r.id, "left")]).toEqual([b.id, a.id, r.id, r.id]);
+  expect([go(a.id, "down"), go(a.id, "up")]).toEqual([a1.id, a.id]); // a's stack hangs below
+  expect([go(b.id, "up"), go(b.id, "down")]).toEqual([b1.id, b.id]); // b's stack goes above
+  expect([go(a1.id, "down"), go(a1x.id, "down"), go(a2.id, "down")]).toEqual([a1x.id, a2.id, a2.id]); // outward, stopping at the end of the stack
+  expect([go(a2.id, "up"), go(a1.id, "up")]).toEqual([a1x.id, a.id]); // inward, back to the topic
+  expect([go(a1.id, "left"), go(a.id, "down")]).toEqual([a.id, a1.id]);
 });

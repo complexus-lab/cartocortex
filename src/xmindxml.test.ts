@@ -53,8 +53,8 @@ test("sheetsFromXml maps an XMind 8 document", () => {
 });
 
 test("layoutOf", () => {
-  expect(["org.xmind.ui.fishbone.leftHeaded", "org.xmind.ui.org-chart.down", "org.xmind.ui.tree.right", "org.xmind.ui.map.clockwise", "org.xmind.ui.logic.right", "org.xmind.ui.matrix"].map(layoutOf))
-    .toEqual(["fish", "down", "tree", "map", undefined, undefined]);
+  expect(["org.xmind.ui.fishbone.leftHeaded", "org.xmind.ui.org-chart.down", "org.xmind.ui.tree.right", "org.xmind.ui.map.clockwise", "org.xmind.ui.logic.right", "org.xmind.ui.matrix", "org.xmind.ui.timeline.vertical"].map(layoutOf))
+    .toEqual(["fish", "down", "tree", "map", undefined, undefined, "line"]);
 });
 
 test("a zip with only content.xml opens; content.json wins when both exist", async () => {

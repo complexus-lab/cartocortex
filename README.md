@@ -38,7 +38,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Other XMind structures (matrix, timeline), and floating topics, relationships and styles from imported XMind 8 files.
+Other XMind structures (matrix, brace, spreadsheet), and floating topics, relationships and styles from imported XMind 8 files.
 
 ## Added
 
@@ -64,10 +64,14 @@ Look: the UI follows the Glossolalie palette (teal `#0D9488` accent, navy `#1E3A
 
 Task markers and links: the panel sets a priority (1-5, a numbered disc: darker is more urgent) and a progress (0-100%, a pie that becomes a check at 100%) on the selected topics; both map to XMind's `priority-N` and `task-*` markers on `.xmind` import and export (other XMind markers are dropped). A topic's link shows a 🔗 badge: click it, or use "Open link", to open it in the system browser. Only http, https and mailto links open; a bare host such as `example.com` gets https://, and `javascript:` or `file:` links are refused.
 
-Structures: the toolbar picker offers Logic (right), Map (both sides), Org chart (top-down), Tree (indented list) and Fishbone. Arrow keys follow the structure (in an org chart, ↓ goes to the first child and ← / → move between topics in a row; in a tree, ↑ / ↓ walk the rows). Summaries are drawn in the Logic and Map structures only. The structure is saved per sheet and maps to XMind's org-chart, tree-chart, logic and map structures; other XMind structures (matrix, timeline) open as Logic.
+Structures: the toolbar picker offers Logic (right), Map (both sides), Org chart (top-down), Tree (indented list), Fishbone and Timeline. Arrow keys follow the structure (in an org chart, ↓ goes to the first child and ← / → move between topics in a row; in a tree, ↑ / ↓ walk the rows). Summaries are drawn in the Logic and Map structures only. The structure is saved per sheet and maps to XMind's org-chart, tree-chart, logic and map structures; other XMind structures (matrix, brace, spreadsheet) open as Logic.
 
 Text style: the panel's Text section (and ⌘B / ⌘I) sets bold, italic, strikethrough and a text colour on the selected topics. With the cursor in a topic (or in the notes) the same controls style just the selected words; otherwise they style the whole topic. Notes are now a small rich editor too (plain text underneath, so search still works). Per-word style is saved with the map and shows in PNG / PDF export, but `.xmind` export writes plain text for titles and notes (topic-level style is still exported). The style is kept in PNG / PDF export and in `.xmind` files (as XMind's `fo:font-weight`, `fo:font-style`, `fo:text-decoration` and `fo:color` properties; I have not checked it against a file made by XMind itself). Colours read from files must be plain `#rrggbb`.
 
 Fishbone: the central topic is the head on the right; top-level topics alternate above and below the spine on slanted bones, with their sub-topics as ribs along each bone and deeper levels hanging to the left of their parent. Arrow keys walk the bones in reading order (← towards the tail, → towards the head). The head is always on the right (XMind's right-headed fishbone).
 
 Old XMind files: `.xmind` files saved by XMind 8 and earlier (XML inside, `content.xml`) now open too, with every sheet's title, structure, topics, notes, links, folding and priority / progress markers. Floating topics, relationships, styles and other markers in those files are dropped. Files from newer XMind (JSON inside) are read as before, and take precedence when a file has both. The reader is strict by design: XML with a DOCTYPE is refused.
+
+Timeline: the central topic starts a horizontal line and the top-level topics sit on it, in order. Each topic's sub-topics stack in a column under the first topic, above the second, and so on (nearest first, indented by depth). ← / → move along the line; ↑ / ↓ move into and along a stack. It maps to XMind's horizontal timeline, and any XMind timeline variant opens as this one.
+
+XMind compatibility notes: structure classes, `fo:*` style keys, marker ids and the style / marker JSON layout were checked against identifiers inside the installed XMind app, but not against a document saved by XMind (none was available on this machine).

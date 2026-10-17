@@ -44,3 +44,24 @@ test("svg export carries text style and escapes colours", () => {
   expect(svg).toContain('fill="#0d9488">fancy');
   expect(svg).not.toContain('" onload="');
 });
+
+import { importXmindSheets, zip } from "./xmind";
+
+test("xmind import reads numeric weights and ignores 'inherited' or malformed style values", async () => {
+  const topic = (title: string, properties: Record<string, string>) => ({ id: title, title, style: { id: "s", properties } });
+  const sheet = {
+    id: "s", class: "sheet", title: "t",
+    rootTopic: { id: "r", title: "r", children: { attached: [
+      topic("a", { "fo:font-weight": "700", "fo:color": "#0D9488FF" }),
+      topic("b", { "fo:font-weight": "normal", "fo:color": "inherited", "fo:font-style": "normal", "fo:text-decoration": "underline" }),
+      topic("c", { "fo:font-weight": "bold", "fo:color": "rgb(1,2,3)" }),
+    ] } },
+  };
+  const [root] = await importXmindSheets(zip({ "content.json": JSON.stringify([sheet]) }));
+  expect(root.children[0]).toMatchObject({ bold: true, textColor: "#0D9488" });
+  expect(root.children[1]).toEqual(expect.not.objectContaining({ bold: true }));
+  expect(root.children[1].textColor).toBeUndefined();
+  expect(root.children[1].strike).toBeUndefined(); // underline is not strikethrough
+  expect(root.children[2]).toMatchObject({ bold: true });
+  expect(root.children[2].textColor).toBeUndefined();
+});
