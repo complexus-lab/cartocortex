@@ -6,6 +6,7 @@ import {
 import { exportXmind } from "./xmind";
 import { toOpml } from "./outline-io";
 import { toFreemind } from "./freemind";
+import { toMindmanager } from "./mindmanager";
 import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
 import { customColors, customTheme } from "./theme";
@@ -599,6 +600,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
           { label: "Markdown (.md)", on: () => saveFile(fileName("md"), "md", toMarkdown(s.root)) },
           { label: "OPML (.opml)", on: () => saveFile(fileName("opml"), "opml", toOpml(park().roots)) },
           { label: "FreeMind (.mm)", on: () => saveFile(fileName("mm"), "mm", toFreemind(park().roots)) },
+          { label: "MindManager (.mmap)", on: () => saveFile(fileName("mmap"), "mmap", toMindmanager(park().roots)) },
           { label: "Image (.png)", on: () => exportImage("png") },
           { label: "Document (.pdf)", on: () => exportImage("pdf") },
         ]} />

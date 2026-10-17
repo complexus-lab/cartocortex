@@ -38,6 +38,12 @@ test("documents are written and read in the format their extension names", async
   const backMm = await parseDoc("plan.mm", mm);
   expect(backMm.roots.map((r) => r.text)).toEqual(["Plan", "Second"]); // one root node per sheet
   expect(backMm.roots[0].children[0].text).toBe("child");
+
+  const mmap = docBytes("/tmp/plan.mmap", roots, 1);
+  expect(new TextDecoder().decode(mmap.slice(0, 2))).toBe("PK"); // a zip
+  const backMmap = await parseDoc("plan.mmap", mmap);
+  expect(backMmap.roots.map((r) => r.text)).toEqual(["Plan", "Second"]); // one map per sheet
+  expect(backMmap.roots[0].children[0].text).toBe("child");
 });
 
 const store = new Map<string, string>();
