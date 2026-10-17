@@ -5,7 +5,7 @@ import {
 } from "./model";
 import { exportXmind, importXmindSheets } from "./xmind";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
-import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
+import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
 import { normalizeUrl } from "./links";
 import { PRIORITIES, PROGRESS, prioColors } from "./task";
@@ -482,11 +482,14 @@ export default function App() {
         <span className="sep" />
         <select value={s.root.layout ?? "right"} onChange={(e) => setDocProp({ layout: e.target.value as Node["layout"] })} title="Structure">
           <option value="right">Logic (right)</option>
+          <option value="left">Logic (left)</option>
           <option value="map">Map (both sides)</option>
           <option value="down">Org chart (down)</option>
           <option value="tree">Tree (indented)</option>
           <option value="fish">Fishbone</option>
           <option value="line">Timeline</option>
+          <option value="brace">Brace</option>
+          <option value="matrix">Matrix</option>
         </select>
         <select value={s.root.theme ?? "classic"} onChange={(e) => setDocProp({ theme: e.target.value })} title="Theme">
           {Object.entries(THEMES).map(([id, t]) => <option key={id} value={id}>{t.name}</option>)}
@@ -583,9 +586,12 @@ export default function App() {
                   <path d="M0 0L10 5L0 10z" style={{ fill: "var(--muted)", stroke: "none" }} />
                 </marker>
               </defs>
-              {boxes.filter((b) => b.parent && shown(b.id)).map((b) => {
+              {boxes.filter((b) => b.parent && b.flow !== "brace" && shown(b.id)).map((b) => {
                 return <path key={b.id} style={{ stroke: colorOf(b) }} d={branchD(b, byId[b.parent!])} />;
               })}
+              {braces(boxes.filter((b) => shown(b.id))).map((g) => (
+                <path key={`brace-${g.id}`} style={{ stroke: colorOf(byId[g.id]) }} d={g.d} />
+              ))}
               {rels.map((r) => {
                 const d = relD(byId[r.from], byId[r.to]);
                 return (

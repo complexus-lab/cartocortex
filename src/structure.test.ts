@@ -71,7 +71,7 @@ test("summaries are only drawn in sideways layouts", () => {
 });
 
 test("xmind export/import keeps the structure", async () => {
-  for (const kind of ["right", "map", "down", "tree", "fish", "line"] as const) {
+  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix"] as const) {
     const back = await importXmindSheets(exportXmind({ ...mk("r"), layout: kind }));
     expect(back[0].layout ?? "right").toBe(kind);
   }
@@ -168,4 +168,65 @@ test("timeline: arrow keys run along the line and into the stacks", () => {
   expect([go(a1.id, "down"), go(a1x.id, "down"), go(a2.id, "down")]).toEqual([a1x.id, a2.id, a2.id]); // outward, stopping at the end of the stack
   expect([go(a2.id, "up"), go(a1.id, "up")]).toEqual([a1x.id, a.id]); // inward, back to the topic
   expect([go(a1.id, "left"), go(a.id, "down")]).toEqual([a.id, a1.id]);
+});
+
+import { braces } from "./export";
+
+function sideways(kind: Node["layout"]) {
+  const [a, b, c, a1, a2, a3] = ["a", "b", "c", "a1", "a2", "a3"].map((t) => mk(t));
+  let r: Node = { ...mk("root"), layout: kind };
+  for (const n of [a, b, c]) r = addChild(r, r.id, n);
+  for (const n of [a1, a2, a3]) r = addChild(r, a.id, n);
+  return { r, a, b, c, a1, a2, a3 };
+}
+
+test("logic (left) is the mirror image of logic (right)", () => {
+  const right = sideways("right"), left = sideways("left");
+  const rb = layout(right.r), lb = layout(left.r);
+  expect(lb.every((x) => x.flow === "right")).toBe(true);
+  expect(lb[0]).toMatchObject({ x: 0, w: rb[0].w }); // the root stays at x = 0
+  rb.slice(1).forEach((x, i) => {
+    const m = lb[i + 1];
+    expect(m.side).toBe(-1);
+    expect(m.y - lb[0].y).toBe(x.y - rb[0].y); // same rows, relative to the root
+    expect(m.x + m.w).toBeLessThanOrEqual(0); // everything is left of the root
+    expect(rb[0].w - x.x - x.w).toBeCloseTo(m.x); // mirrored about the root's width
+  });
+  expect(neighbour(left.r, lb, left.r.id, "left")).toBe(left.a.id);
+  expect(neighbour(left.r, lb, left.a.id, "right")).toBe(left.r.id);
+});
+
+test("brace: same geometry as logic (right), with one curly brace per parent", () => {
+  const plain = layout(sideways("right").r), { r, a } = sideways("brace"), boxes = layout(r);
+  boxes.forEach((x, i) => expect([x.x, x.y, x.w]).toEqual([plain[i].x, plain[i].y, plain[i].w]));
+  expect(boxes.every((x) => x.flow === "brace")).toBe(true);
+  const gs = braces(boxes);
+  expect(gs).toHaveLength(2); // the root's children and a's children
+  const by = Object.fromEntries(boxes.map((x) => [x.id, x]));
+  const rootBrace = gs.find((g) => g.id === a.id)!;
+  expect(rootBrace.d.startsWith(`M${by[r.id].x + by[r.id].w} `)).toBe(true); // the stem leaves the parent's right edge
+  expect(rootBrace.d).toContain("Q"); // three rows: a real curly brace
+  expect(braces(layout({ ...sideways("brace").r, children: [mk("only")] }))[0].d).not.toContain("Q"); // a single row: a plain line
+  expect(braces(layout(sideways("right").r))).toEqual([]); // other structures draw no braces
+});
+
+test("matrix: topics along the top, every stack below, nothing overlaps", () => {
+  const { r, a, b, c, a1, a2, a3 } = sideways("matrix");
+  const boxes = layout(r);
+  const by = Object.fromEntries(boxes.map((x) => [x.id, x]));
+  const mid = (id: string) => by[id].y + by[id].h / 2;
+  expect(boxes.every((x) => x.flow === "matrix")).toBe(true);
+  expect([mid(a.id), mid(b.id), mid(c.id)]).toEqual([0, 0, 0]);
+  expect(by[a.id].x < by[b.id].x && by[b.id].x < by[c.id].x).toBe(true);
+  expect(by[a1.id].y > by[a.id].y && by[a2.id].y > by[a1.id].y && by[a3.id].y > by[a2.id].y).toBe(true); // below, in order
+  const b1 = mk("b1");
+  const inB = Object.fromEntries(layout({ ...r, children: [a, { ...b, children: [b1] }, c] }).map((x) => [x.id, x]));
+  expect(inB[b1.id].y).toBeGreaterThan(0); // the second column also hangs below (a timeline would put it above)
+  expect(neighbour(r, boxes, b.id, "up")).toBe(b.id);
+  expect(neighbour(r, boxes, a.id, "down")).toBe(a1.id);
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const p = boxes[i], q = boxes[j];
+      expect(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y, `${p.id} overlaps ${q.id}`).toBe(true);
+    }
 });

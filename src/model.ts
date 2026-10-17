@@ -22,7 +22,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "map" | "down" | "tree" | "fish" | "line"; // logic chart, two-sided map, org chart, tree chart, fishbone, timeline
+  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
   title?: string; // sheet name (tab label); falls back to the central topic text
   rels?: Rel[];
@@ -34,7 +34,7 @@ export type Box = {
   parent?: string; depth: number;
   side: 1 | -1; // which side of the root the node grows towards
   branch: number; // index of the top-level ancestor (-1 for the root)
-  flow: "right" | "down" | "tree" | "fish" | "line"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
+  flow: "right" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
   anchor?: { x: number; y: number }; // fishbone and timeline: where this topic's connector starts or meets the line
 };
 
@@ -224,14 +224,14 @@ const TL = { GAP: 36, ROW: 14, NEST: 24 };
  * Timeline: the root starts a horizontal line and the top-level topics sit on it, in order. Each topic's
  * descendants stack in a column under it (first topic), above it (second), and so on, indented by depth.
  */
-function timeline(root: Node): Raw[] {
+function timeline(root: Node, alternate = true): Raw[] {
   const rowH = H + GAP_Y;
   const head: Raw = { id: root.id, x: 0, y: -H / 2, w: widthOf(root), h: H, depth: 0 };
   const out: Raw[] = [head];
   let cursor = head.w + TL.GAP;
   let prevRight = head.w;
   (root.collapsed ? [] : root.children).forEach((label, k) => {
-    const below = k % 2 === 0;
+    const below = !alternate || k % 2 === 0; // a matrix hangs every stack below
     const lw = widthOf(label);
     const lbl: Raw = { id: label.id, x: cursor, y: -H / 2, w: lw, h: H, parent: root.id, depth: 1, anchor: { x: prevRight, y: 0 } };
     out.push(lbl);
@@ -262,14 +262,16 @@ function timeline(root: Node): Raw[] {
  */
 export function layout(root: Node): Box[] {
   const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
-  const flow: Box["flow"] = root.layout === "down" ? "down" : root.layout === "tree" ? "tree" : root.layout === "fish" ? "fish" : root.layout === "line" ? "line" : "right";
+  const flows: Record<string, Box["flow"]> = { down: "down", tree: "tree", fish: "fish", line: "line", matrix: "matrix", brace: "brace" };
+  const flow = flows[root.layout ?? ""] ?? "right";
   const out: Box[] = [];
 
-  if (flow !== "right") {
-    const raw = { down: vertical, tree: indented, fish: fishbone, line: timeline }[flow]({ ...root, children: kids });
+  if (flow !== "right" && flow !== "brace") {
+    const raw = { down: vertical, tree: indented, fish: fishbone, line: timeline, matrix: (r: Node) => timeline(r, false) }[flow]({ ...root, children: kids });
     out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
   } else {
-    const cut = root.layout === "map" && !root.collapsed ? Math.ceil(kids.length / 2) : kids.length;
+    // Sideways structures share one geometry: "right" and "brace" grow right, "left" grows left, "map" splits both ways.
+    const cut = root.collapsed ? kids.length : root.layout === "map" ? Math.ceil(kids.length / 2) : root.layout === "left" ? 0 : kids.length;
     const right = half({ ...root, children: kids.slice(0, cut) });
     out.push(...right.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
 
@@ -310,16 +312,16 @@ export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "r
     const row = boxes.filter((b) => b.flow === "down" && b.depth === me.depth).sort((a, b) => a.x - b.x);
     return (row[row.findIndex((b) => b.id === id) + (dir === "right" ? 1 : -1)] ?? me).id;
   }
-  if (me.flow === "line") {
-    const stops = boxes.filter((b) => b.flow === "line" && b.depth <= 1); // the head, then the topics on the line
+  if (me.flow === "line" || me.flow === "matrix") {
+    const stops = boxes.filter((b) => b.flow === me.flow && b.depth <= 1); // the head, then the topics on the line
     if (me.depth <= 1) {
       if (dir === "left" || dir === "right") return (stops[stops.findIndex((b) => b.id === id) + (dir === "right" ? 1 : -1)] ?? me).id;
       const k = root.children.filter((c) => !c.float).findIndex((c) => c.id === id);
-      return me.depth === 1 && (dir === "down") === (k % 2 === 0) ? firstKid() : id; // into the stack, on the side it hangs
+      return me.depth === 1 && (dir === "down") === (me.flow === "matrix" || k % 2 === 0) ? firstKid() : id; // into the stack, on the side it hangs
     }
     if (dir === "left") return me.parent ?? id;
     if (dir === "right") return firstKid();
-    const order = boxes.filter((b) => b.flow === "line"); // document order
+    const order = boxes.filter((b) => b.flow === me.flow); // document order
     const outward = dir === (me.y > 0 ? "down" : "up");
     const next = order[order.findIndex((b) => b.id === id) + (outward ? 1 : -1)];
     return (next && next.depth >= (outward ? 2 : 1) ? next : me).id;

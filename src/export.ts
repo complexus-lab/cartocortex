@@ -17,7 +17,8 @@ export function branchD(b: Box, p: Box) {
     const x0 = p.x + p.w / 2, y0 = p.y + p.h, x1 = b.x + b.w / 2, my = (y0 + b.y) / 2;
     return `M${x0} ${y0} C${x0} ${my} ${x1} ${my} ${x1} ${b.y}`;
   }
-  if (b.flow === "line") {
+  if (b.flow === "brace") return ""; // drawn per parent by `braces`
+  if (b.flow === "line" || b.flow === "matrix") {
     if (b.anchor) return `M${b.anchor.x} ${b.anchor.y}H${b.x}`; // along the line from the previous topic
     return `M${p.x + 12} ${b.y > p.y ? p.y + p.h : p.y}V${b.y + b.h / 2}H${b.x}`; // a trunk from the parent, then across to the row
   }
@@ -31,6 +32,24 @@ export function branchD(b: Box, p: Box) {
   const left = b.side === -1;
   const x0 = left ? p.x : p.x + p.w, y0 = p.y + p.h / 2, x1 = left ? b.x + b.w : b.x, y1 = b.y + b.h / 2, mx = (x0 + x1) / 2;
   return `M${x0} ${y0} C${mx} ${y0} ${mx} ${y1} ${x1} ${y1}`;
+}
+
+/** Curly braces for the brace structure: one per parent, spanning its children, with a stem back to the parent. */
+export function braces(boxes: Box[]) {
+  const byId = Object.fromEntries(boxes.map((b) => [b.id, b]));
+  const groups = new Map<string, Box[]>();
+  for (const b of boxes) if (b.flow === "brace" && b.parent) groups.set(b.parent, [...(groups.get(b.parent) ?? []), b]);
+  return [...groups].map(([pid, kids]) => {
+    const p = byId[pid];
+    const xc = Math.min(...kids.map((k) => k.x)), y0 = Math.min(...kids.map((k) => k.y)), y1 = Math.max(...kids.map((k) => k.y + k.h));
+    const ym = (y0 + y1) / 2, x0 = p.x + p.w;
+    if (y1 - y0 < 70) return { id: kids[0].id, d: `M${x0} ${ym}H${xc}` }; // a row or two: a plain line will do
+    const xr = xc - 10, xl = xr - 12, xt = xl - 12; // right end, spine and tip of the brace
+    return {
+      id: kids[0].id,
+      d: `M${x0} ${ym}H${xt}M${xr} ${y0}Q${xl} ${y0} ${xl} ${y0 + 12}V${ym - 12}Q${xl} ${ym} ${xt} ${ym}Q${xl} ${ym} ${xl} ${ym + 12}V${y1 - 12}Q${xl} ${y1} ${xr} ${y1}`,
+    };
+  });
 }
 
 /** Curved relationship line between two boxes, border to border. */
@@ -66,7 +85,8 @@ export function mapSvg(root: Node, boxes: Box[], rawColorOf: (b: Box) => string)
     const c = colorOf(byId[id]);
     out.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="14" fill="${c}" fill-opacity=".08" stroke="${c}" stroke-width="2" stroke-dasharray="6 4"/>`);
   }
-  for (const b of boxes) if (b.parent) out.push(`<path d="${branchD(b, byId[b.parent])}" fill="none" stroke="${colorOf(b)}" stroke-width="2"/>`);
+  for (const b of boxes) if (b.parent && b.flow !== "brace") out.push(`<path d="${branchD(b, byId[b.parent])}" fill="none" stroke="${colorOf(b)}" stroke-width="2"/>`);
+  for (const g of braces(boxes)) out.push(`<path d="${g.d}" fill="none" stroke="${colorOf(byId[g.id])}" stroke-width="2"/>`);
   for (const r of root.rels ?? []) {
     if (byId[r.from] && byId[r.to]) out.push(`<path d="${relD(byId[r.from], byId[r.to])}" fill="none" stroke="#5c7391" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arr)"/>`);
   }

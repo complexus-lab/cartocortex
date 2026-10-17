@@ -65,3 +65,17 @@ test("a zip with only content.xml opens; content.json wins when both exist", asy
   expect(both.map((r) => r.text)).toEqual(["from json"]);
   await expect(importXmindSheets(zip({ "other.txt": "x" }))).rejects.toThrow("not an XMind file");
 });
+
+test("layoutOf covers the remaining XMind structure classes", () => {
+  const cases: Record<string, ReturnType<typeof layoutOf>> = {
+    "org.xmind.ui.logic.left": "left",
+    "org.xmind.ui.brace.right": "brace",
+    "org.xmind.ui.brace.left": "brace",
+    "org.xmind.ui.spreadsheet.column": "matrix",
+    "org.xmind.ui.structure.spreadsheet.row": "matrix",
+    "org.xmind.ui.treetable.toptitle": "tree", // nearest match
+    "org.xmind.ui.map.unbalanced": "map", // XMind's default map
+    "org.xmind.ui.logic-chart.right": undefined,
+  };
+  for (const [cls, want] of Object.entries(cases)) expect(layoutOf(cls), cls).toBe(want);
+});

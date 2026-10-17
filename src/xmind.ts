@@ -147,6 +147,9 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   tree: "org.xmind.ui.tree.right",
   fish: "org.xmind.ui.fishbone.rightHeaded",
   line: "org.xmind.ui.timeline.horizontal",
+  left: "org.xmind.ui.logic.left",
+  brace: "org.xmind.ui.brace.right",
+  matrix: "org.xmind.ui.spreadsheet.column",
 };
 
 const toSheet = (root: Node, i: number): XSheet => ({
