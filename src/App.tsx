@@ -3,7 +3,8 @@ import {
   Box, Node, addChild, addSibling, clone, findNode, discard, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, rename,
   search, toMarkdown, toggle, visibleIds,
 } from "./model";
-import { exportXmind, importXmindSheets } from "./xmind";
+import { exportXmind } from "./xmind";
+import { Opened, baseName, confirmDiscard, docBytes, download, extOf, loadRecent, parseDoc, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
@@ -58,23 +59,6 @@ async function saveFile(name: string, ext: string, content: string | Uint8Array)
   }
 }
 
-async function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> {
-  if (isTauri) {
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const { readFile } = await import("@tauri-apps/plugin-fs");
-    const path = await open({ filters: [{ name: "Mind map", extensions: ["json", "xmind"] }] });
-    return typeof path === "string" ? { name: path, bytes: await readFile(path) } : null;
-  }
-  return new Promise((res) => {
-    const i = Object.assign(document.createElement("input"), { type: "file", accept: ".json,.xmind" });
-    i.onchange = async () => {
-      const f = i.files?.[0];
-      res(f ? { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) } : null);
-    };
-    i.click();
-  });
-}
-
 /** Open a topic link in the system browser. Only http(s) and mailto links are allowed. */
 async function openLink(raw: string) {
   const url = normalizeUrl(raw);
@@ -92,6 +76,12 @@ export default function App() {
     const root = sheets.roots[sheets.cur];
     return { root, past: [], future: [], sel: root.id, edit: null };
   });
+  const [docPath, setDocPath] = useState<string | null>(null); // where the document lives on disk (desktop app)
+  const [dirty, setDirty] = useState(false); // changed since it was last saved or opened
+  const [recent, setRecent] = useState<string[]>(loadRecent);
+  const savedJson = useRef<string | null>(null); // the document as last saved or opened
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
   const [renaming, setRenaming] = useState<number | null>(null); // sheet tab being renamed
   const [delAsk, setDelAsk] = useState<number | null>(null); // sheet tab awaiting delete confirmation
   const [view, setView] = useState({ x: 80, y: Math.round(window.innerHeight / 2) - 40, k: 1 });
@@ -141,11 +131,14 @@ export default function App() {
   const shown = (id: string) => present === null || (byId[id]?.branch ?? 0) < present;
 
   useEffect(() => {
+    const json = bookJson(park().roots, sheets.cur);
     try {
-      localStorage.setItem(KEY, bookJson(park().roots, sheets.cur));
+      localStorage.setItem(KEY, json);
     } catch {
       /* storage unavailable: autosave is best-effort */
     }
+    savedJson.current ??= json; // the first document counts as saved
+    setDirty(json !== savedJson.current);
   }, [s.root, sheets]);
 
   /** Apply an edit to the tree, recording undo history. */
@@ -229,7 +222,81 @@ export default function App() {
   };
 
   const fileName = (ext: string) => `${s.root.text.replace(/[\\/:*?"<>|]/g, "_") || "cartocortex"}.${ext}`;
-  const saveJson = () => saveFile(fileName("json"), "json", bookJson(park().roots, sheets.cur, true));
+
+  /** The document is now what's on disk at `path` (null in the browser, where there is no path). */
+  const markSaved = (path: string | null, json = bookJson(park().roots, sheets.cur)) => {
+    savedJson.current = json;
+    setDirty(false);
+    setDocPath(path);
+    if (path) {
+      const next = pushRecent(recent, path);
+      saveRecent(next);
+      setRecent(next);
+    }
+  };
+  /** Save: overwrite the current file, or ask where to put it. `asNew` always asks. */
+  const saveDoc = async (asNew = false) => {
+    try {
+      const roots = park().roots;
+      if (!isTauri) return (download(fileName("json"), docBytes("map.json", roots, sheets.cur)), markSaved(null));
+      let path = !asNew && docPath ? docPath : await pickSavePath(docPath ? baseName(docPath) : fileName("json"));
+      if (!path) return;
+      if (!extOf(path)) path += ".json";
+      await writePath(path, docBytes(path, roots, sheets.cur));
+      markSaved(path);
+    } catch (e) {
+      alert(`Could not save: ${(e as Error).message}`);
+    }
+  };
+  const loadOpened = async (f: Opened) => {
+    const book = await parseDoc(f.name, f.bytes);
+    openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
+    markSaved(f.path, bookJson(book.roots, book.cur));
+  };
+  const open = async (path?: string) => {
+    try {
+      if (dirtyRef.current && !(await confirmDiscard())) return;
+      const f = path ? await readPath(path) : await pickOpen();
+      if (f) await loadOpened(f);
+    } catch (e) {
+      alert(`Could not open file: ${(e as Error).message}`);
+    }
+  };
+  const newDoc = async () => {
+    if (dirtyRef.current && !(await confirmDiscard())) return;
+    const root = { ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] };
+    openSheet(0, { roots: [root], hist: [emptyHist(root)], cur: 0 });
+    markSaved(null, bookJson([root], 0));
+  };
+
+  // The window title shows the file name, with a bullet while there are unsaved changes.
+  useEffect(() => {
+    const title = `${dirty ? "• " : ""}${docPath ? baseName(docPath) : "Untitled"} — Cartocortex`;
+    document.title = title;
+    if (isTauri) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().setTitle(title)).catch(() => {});
+  }, [docPath, dirty]);
+
+  // Ask before closing the window with unsaved changes.
+  useEffect(() => {
+    if (!isTauri) {
+      const warn = (e: BeforeUnloadEvent) => dirtyRef.current && e.preventDefault();
+      window.addEventListener("beforeunload", warn);
+      return () => window.removeEventListener("beforeunload", warn);
+    }
+    let off: (() => void) | undefined, stopped = false;
+    import("@tauri-apps/api/window")
+      .then((w) =>
+        w.getCurrentWindow().onCloseRequested(async (e) => {
+          if (dirtyRef.current && !(await confirmDiscard())) e.preventDefault();
+        }),
+      )
+      .then((un) => (stopped ? un() : (off = un)))
+      .catch(() => {});
+    return () => {
+      stopped = true;
+      off?.();
+    };
+  }, []);
 
   // Other sheets sit in `sheets` with their own undo history; the open one is `s`, folded back in by `park`.
   const park = (): Sheets => ({
@@ -265,16 +332,6 @@ export default function App() {
       await saveFile(fileName(kind), kind, kind === "png" ? await mapToPng(m) : await mapToPdf(m));
     } catch (e) {
       alert(`Could not export: ${(e as Error).message}`);
-    }
-  };
-  const open = async () => {
-    const f = await openFile();
-    if (!f) return;
-    try {
-      const book: Book = /\.xmind$/i.test(f.name) ? { roots: await importXmindSheets(f.bytes), cur: 0 } : parseBook(new TextDecoder().decode(f.bytes));
-      openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
-    } catch (e) {
-      alert(`Could not open file: ${(e as Error).message}`);
     }
   };
 
@@ -333,7 +390,7 @@ export default function App() {
       const go = (dir: "left" | "right" | "up" | "down") => setS((p) => ({ ...p, sel: neighbour(p.root, layout(p.root), p.sel, dir) }));
       if (mod) {
         const m: Record<string, () => void> = {
-          z: e.shiftKey ? redo : undo, s: saveJson, o: open, c: copy, v: paste, d: duplicate, a: () => setGroup(boxes.map((b) => b.id)),
+          z: e.shiftKey ? redo : undo, s: () => saveDoc(e.shiftKey), o: () => open(), n: newDoc, c: copy, v: paste, d: duplicate, a: () => setGroup(boxes.map((b) => b.id)),
           b: () => setNode({ bold: selNode.bold ? undefined : true }),
           i: () => setNode({ italic: selNode.italic ? undefined : true }),
           x: () => (copy(), del()),
@@ -506,8 +563,16 @@ export default function App() {
           }}
         />
         <span className="sep" />
-        <button onClick={open}>Open…</button>
-        <button onClick={saveJson}>Save…</button>
+        <button onClick={newDoc} title="New map (⌘N)">New</button>
+        <button onClick={() => open()} title="Open a map (⌘O)">Open…</button>
+        {isTauri && recent.length > 0 && (
+          <select value="" title="Recent files" onChange={(e) => e.target.value && open(e.target.value)}>
+            <option value="">Recent…</option>
+            {recent.map((p) => <option key={p} value={p} title={p}>{baseName(p)}</option>)}
+          </select>
+        )}
+        <button className={dirty ? "on" : ""} onClick={() => saveDoc()} title={dirty ? "Save: unsaved changes (⌘S)" : "Save (⌘S)"}>Save</button>
+        {isTauri && <button onClick={() => saveDoc(true)} title="Save under a new name (⇧⌘S)">Save as…</button>}
         <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(park().roots))}>Export XMind</button>
         <button onClick={() => saveFile(fileName("md"), "md", toMarkdown(s.root))}>Export MD</button>
         <button onClick={() => exportImage("png")}>PNG</button>

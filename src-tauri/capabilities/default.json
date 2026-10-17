@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Main window: dialogs and file read/write for paths the user picks",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "fs:allow-read-text-file", "fs:allow-write-text-file", "opener:default", "fs:allow-read-file", "fs:allow-write-file"]
+  "permissions": ["core:default", "dialog:default", "fs:allow-read-text-file", "fs:allow-write-text-file", "opener:default", "fs:allow-read-file", "fs:allow-write-file", "core:window:allow-set-title"]
 }
