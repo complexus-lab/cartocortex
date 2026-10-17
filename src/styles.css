@@ -71,3 +71,11 @@ html, body, #root { margin: 0; height: 100%; background: var(--bg); overflow: hi
 .marquee { position: absolute; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; z-index: 3; }
 
 .node.dragging { pointer-events: none; opacity: .85; }
+
+.tabs { display: flex; gap: 2px; align-items: flex-end; padding: 4px 12px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tab.on { background: var(--bg); border-color: var(--line); color: var(--ink); margin-bottom: -1px; }
+.tab input { font: inherit; color: inherit; background: transparent; border: 0; outline: 0; width: 110px; }
+.tab .x, .tabs .add { font: inherit; color: var(--muted); background: transparent; border: 0; border-radius: 4px; padding: 0 4px; cursor: pointer; }
+.tab .x:hover, .tabs .add:hover { color: var(--accent); }
+.present .tabs { display: none; }

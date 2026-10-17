@@ -107,26 +107,42 @@ const fromX = (t: XTopic): Node => {
   };
 };
 
-export function exportXmind(root: Node): Uint8Array {
-  const rootTopic = {
+type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic };
+
+const toSheet = (root: Node, i: number): XSheet => ({
+  id: crypto.randomUUID(),
+  class: "sheet",
+  title: root.title || root.text || `Sheet ${i + 1}`,
+  rootTopic: {
     ...toX(root),
     structureClass: root.layout === "map" ? "org.xmind.ui.map.clockwise" : "org.xmind.ui.logic.right",
-  };
-  const sheet = { id: crypto.randomUUID(), class: "sheet", title: "Sheet 1", rootTopic };
+  },
+});
+
+/** One XMind sheet per root topic. */
+export function exportXmind(roots: Node | Node[]): Uint8Array {
   return zip({
-    "content.json": JSON.stringify([sheet]),
+    "content.json": JSON.stringify((Array.isArray(roots) ? roots : [roots]).map(toSheet)),
     "metadata.json": "{}",
     "manifest.json": JSON.stringify({ "file-entries": { "content.json": {}, "metadata.json": {} } }),
   });
 }
 
-/** Imports the first sheet's root topic. Markers, styles and relationships are dropped. */
-export async function importXmind(bytes: Uint8Array): Promise<Node> {
+/** Imports every sheet as a root topic (sheet title kept). Markers, styles and relationships are dropped. */
+export async function importXmindSheets(bytes: Uint8Array): Promise<Node[]> {
   const content = (await unzip(bytes)).get("content.json");
   if (!content) throw new Error("no content.json (legacy .xmind files are not supported)");
-  const topic = (JSON.parse(dec.decode(content)) as { rootTopic: XTopic }[])[0]?.rootTopic;
-  if (!topic) throw new Error("no sheet found");
-  const root = fromX(topic);
-  if (topic.structureClass?.includes("map")) root.layout = "map";
-  return root;
+  const roots = (JSON.parse(dec.decode(content)) as XSheet[])
+    .filter((sh) => sh.rootTopic)
+    .map((sh) => {
+      const root = fromX(sh.rootTopic!);
+      if (sh.rootTopic!.structureClass?.includes("map")) root.layout = "map";
+      if (sh.title) root.title = sh.title;
+      return root;
+    });
+  if (!roots.length) throw new Error("no sheet found");
+  return roots;
 }
+
+/** First sheet only. */
+export const importXmind = async (bytes: Uint8Array): Promise<Node> => (await importXmindSheets(bytes))[0];

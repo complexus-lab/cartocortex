@@ -3,12 +3,17 @@ import {
   Box, Node, addChild, addSibling, clone, findNode, discard, layout, mk, moveAll, neighbour, parentOf, patch, patchAll, rename,
   search, toMarkdown, toggle, visibleIds,
 } from "./model";
-import { exportXmind, importXmind } from "./xmind";
+import { exportXmind, importXmindSheets } from "./xmind";
+import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
 import { addSummary, canSummarize, editSummary, removeSummary, siblingSpan, summaryD, summaryGeo } from "./summary";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
+type Hist = { past: Node[]; future: Node[]; sel: string };
+// Sheets. The open sheet lives in `S`; `roots[cur]` here is stale until the sheet is parked (see `park` below).
+type Sheets = { roots: Node[]; hist: Hist[]; cur: number };
+const emptyHist = (r: Node): Hist => ({ past: [], future: [], sel: r.id });
 
 const THEMES: Record<string, { name: string; root: string; accent: string; palette: string[] }> = {
   classic: { name: "Classic", root: "#3b6cff", accent: "#3b6cff", palette: ["#e8590c", "#2f9e44", "#1c7ed6", "#ae3ec9", "#f08c00", "#0c8599"] },
@@ -21,11 +26,11 @@ const ICONS = ["⭐", "❗", "❓", "✅", "❌", "💡", "🔥", "🚩", "⚠�
 const SHAPES = [["round", "Round"], ["rect", "Box"], ["line", "Line"]] as const;
 
 const KEY = "mindmap.autosave";
-const load = (): Node => {
+const load = (): Book => {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "") as Node;
+    return parseBook(localStorage.getItem(KEY) ?? "");
   } catch {
-    return { ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] };
+    return { roots: [{ ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] }], cur: 0 };
   }
 };
 
@@ -66,10 +71,16 @@ async function openFile(): Promise<{ name: string; bytes: Uint8Array } | null> {
 }
 
 export default function App() {
+  const [sheets, setSheets] = useState<Sheets>(() => {
+    const b = load();
+    return { roots: b.roots, hist: b.roots.map(emptyHist), cur: b.cur };
+  });
   const [s, setS] = useState<S>(() => {
-    const root = load();
+    const root = sheets.roots[sheets.cur];
     return { root, past: [], future: [], sel: root.id, edit: null };
   });
+  const [renaming, setRenaming] = useState<number | null>(null); // sheet tab being renamed
+  const [delAsk, setDelAsk] = useState<number | null>(null); // sheet tab awaiting delete confirmation
   const [view, setView] = useState({ x: 80, y: Math.round(window.innerHeight / 2) - 40, k: 1 });
   const [panel, setPanel] = useState(true);
   const [mode, setMode] = useState<"map" | "outline">("map");
@@ -118,11 +129,11 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify(s.root));
+      localStorage.setItem(KEY, bookJson(park().roots, sheets.cur));
     } catch {
       /* storage unavailable: autosave is best-effort */
     }
-  }, [s.root]);
+  }, [s.root, sheets]);
 
   /** Apply an edit to the tree, recording undo history. */
   const commit = (fn: (r: Node) => Node, sel?: string, edit: string | null = null) =>
@@ -202,7 +213,36 @@ export default function App() {
   };
 
   const fileName = (ext: string) => `${s.root.text.replace(/[\\/:*?"<>|]/g, "_") || "cartocortex"}.${ext}`;
-  const saveJson = () => saveFile(fileName("json"), "json", JSON.stringify(s.root, null, 2));
+  const saveJson = () => saveFile(fileName("json"), "json", bookJson(park().roots, sheets.cur, true));
+
+  // Other sheets sit in `sheets` with their own undo history; the open one is `s`, folded back in by `park`.
+  const park = (): Sheets => ({
+    ...sheets,
+    roots: sheets.roots.map((r, i) => (i === sheets.cur ? s.root : r)),
+    hist: sheets.hist.map((h, i) => (i === sheets.cur ? { past: s.past, future: s.future, sel: s.sel } : h)),
+  });
+  const openSheet = (to: number, b: Sheets) => {
+    const root = b.roots[to], h = b.hist[to];
+    setSheets({ ...b, cur: to });
+    setS({ root, past: h.past, future: h.future, sel: findNode(root, h.sel) ? h.sel : root.id, edit: null });
+    setGroup([]);
+    setRelSel(null);
+    setSumSel(null);
+    setRenaming(null);
+    setDelAsk(null);
+    setDoc((d) => d + 1);
+  };
+  const switchSheet = (to: number) => to !== sheets.cur && openSheet(to, park());
+  const addSheet = () => {
+    const b = park(), root = { ...mk("Central topic"), theme: s.root.theme, layout: s.root.layout };
+    openSheet(b.roots.length, { ...b, roots: [...b.roots, root], hist: [...b.hist, emptyHist(root)] });
+  };
+  const deleteSheet = (i: number) => {
+    const b = park();
+    if (b.roots.length < 2) return;
+    const roots = b.roots.filter((_, k) => k !== i), hist = b.hist.filter((_, k) => k !== i);
+    openSheet(i === sheets.cur ? Math.min(i, roots.length - 1) : sheets.cur - (sheets.cur > i ? 1 : 0), { ...b, roots, hist });
+  };
   const exportImage = async (kind: "png" | "pdf") => {
     try {
       const m = mapSvg(s.root, boxes, colorOf);
@@ -215,10 +255,8 @@ export default function App() {
     const f = await openFile();
     if (!f) return;
     try {
-      const root: Node = /\.xmind$/i.test(f.name) ? await importXmind(f.bytes) : JSON.parse(new TextDecoder().decode(f.bytes));
-      if (typeof root.id !== "string" || !Array.isArray(root.children)) throw new Error("not a Cartocortex file");
-      setS({ root, past: [], future: [], sel: root.id, edit: null });
-      setDoc((d) => d + 1);
+      const book: Book = /\.xmind$/i.test(f.name) ? { roots: await importXmindSheets(f.bytes), cur: 0 } : parseBook(new TextDecoder().decode(f.bytes));
+      openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
     } catch (e) {
       alert(`Could not open file: ${(e as Error).message}`);
     }
@@ -445,7 +483,7 @@ export default function App() {
         <span className="sep" />
         <button onClick={open}>Open…</button>
         <button onClick={saveJson}>Save…</button>
-        <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(s.root))}>Export XMind</button>
+        <button onClick={() => saveFile(fileName("xmind"), "xmind", exportXmind(park().roots))}>Export XMind</button>
         <button onClick={() => saveFile(fileName("md"), "md", toMarkdown(s.root))}>Export MD</button>
         <button onClick={() => exportImage("png")}>PNG</button>
         <button onClick={() => exportImage("pdf")}>PDF</button>
@@ -454,6 +492,50 @@ export default function App() {
         <button onClick={startPresenting}>Present</button>
         <button onClick={fit} disabled={mode === "outline"}>Fit</button>
         <button className={panel ? "on" : ""} onClick={() => setPanel(!panel)}>Panel</button>
+      </div>
+      <div className="tabs">
+        {sheets.roots.map((r0, i) => {
+          const r = i === sheets.cur ? s.root : r0;
+          return (
+            <div
+              key={r0.id}
+              className={`tab${i === sheets.cur ? " on" : ""}`}
+              onClick={() => switchSheet(i)}
+              onDoubleClick={() => (switchSheet(i), setRenaming(i))}
+              onMouseLeave={() => delAsk === i && setDelAsk(null)}
+            >
+              {renaming === i ? (
+                <input
+                  autoFocus
+                  defaultValue={sheetTitle(r, i)}
+                  onClick={(e) => e.stopPropagation()}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={(e) => {
+                    setRenaming(null);
+                    if (e.target.value.trim() !== sheetTitle(r, i)) setDocProp({ title: e.target.value.trim() || undefined });
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") setRenaming(null);
+                  }}
+                />
+              ) : (
+                <span>{sheetTitle(r, i)}</span>
+              )}
+              {sheets.roots.length > 1 && (
+                <button
+                  className="x"
+                  title={delAsk === i ? "Click again to delete this sheet" : "Delete sheet"}
+                  onClick={(e) => (e.stopPropagation(), delAsk === i ? deleteSheet(i) : setDelAsk(i))}
+                >
+                  {delAsk === i ? "Delete?" : "×"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <button className="add" onClick={addSheet} title="New sheet">+</button>
       </div>
       <div className="main">
         {mode === "outline" && <Outline root={s.root} sel={s.sel} commit={commit} onSelect={(id) => setS((p) => (p.sel === id ? p : { ...p, sel: id }))} />}

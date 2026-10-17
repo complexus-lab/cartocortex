@@ -38,11 +38,11 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Multiple sheets, clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
+clickable links, rich text, task markers, org-chart/fishbone/tree structures, and legacy XML-only `.xmind` files.
 
 ## Added
 
-Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (first sheet; text, notes, links, folding and structure only).
+Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding and structure only).
 
 Outline view (toolbar "Outline": Enter = sibling, Tab / Shift+Tab = indent / outdent, shares undo with the map) and PNG / PDF export (the PDF is one page holding an image of the map, so its text isn't selectable).
 
@@ -53,3 +53,5 @@ Presentation: "Present" goes full-screen and reveals one top-level branch per st
 Multi-select: Shift / ⌘ / Ctrl-click toggles topics; Shift-drag on empty canvas draws a selection box (⌘/Ctrl-drag adds to the current selection); ⌘A selects all. Delete, drag-to-reparent, and the Fill / Shape / Marker controls act on the whole selection, and Summary wraps selected siblings in one click. Copy / paste / duplicate still work on the primary topic only.
 
 Floating topics: "Float" (or double-click empty canvas) adds a free-standing topic with no branch to the root. Drag it anywhere; release over another topic to attach it there. In `.xmind` export they become ordinary top-level topics (positions are not kept). Deleting topics also removes relationships, boundaries and summaries that pointed at them.
+
+Sheets: tabs under the toolbar, one root topic and one undo history per sheet. "+" adds a sheet, double-click a tab renames it, × then "Delete?" removes it. Save writes every sheet to one `.json` (older single-map files still open); `.xmind` import and export carry all sheets. PNG, PDF, Markdown and presentation use the open sheet.

@@ -15,6 +15,7 @@ export type Node = {
   // Document-level settings, only meaningful on the root node.
   layout?: "right" | "map";
   theme?: string;
+  title?: string; // sheet name (tab label); falls back to the central topic text
   rels?: Rel[];
   bounds?: string[];
   summaries?: Summary[];
@@ -73,8 +74,8 @@ export function moveTo(root: Node, id: string, target: string): Node {
 
 /** Deep copy with fresh ids; document-level settings are not copied. */
 export const clone = (n: Node): Node => {
-  const { rels, bounds, summaries, layout, theme, float, ...rest } = n;
-  void rels, bounds, summaries, layout, theme, float;
+  const { rels, bounds, summaries, layout, theme, title, float, ...rest } = n;
+  void rels, bounds, summaries, layout, theme, title, float;
   return { ...rest, id: crypto.randomUUID(), children: n.children.map(clone) };
 };
 
