@@ -1,5 +1,6 @@
 import { Node } from "./model";
 import { XM_PROGRESS, progressMarker } from "./task";
+import { hex } from "./textstyle";
 
 // .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
 // read accepts stored and deflate. Legacy XML-only files are not supported.
@@ -84,6 +85,7 @@ type XTopic = {
   id: string; class?: string; title?: string; href?: string; branch?: string; structureClass?: string;
   notes?: { plain?: { content?: string } };
   markers?: { markerId: string }[];
+  style?: { id?: string; properties?: Record<string, string> };
   children?: { attached?: XTopic[] };
 };
 
@@ -92,12 +94,24 @@ const markersOf = (n: Node) => [
   ...(n.progress != null ? [{ markerId: progressMarker(n.progress) }] : []),
 ];
 
+/** XMind keeps topic text style in `style.properties` (fo:* keys). */
+const styleOf = (n: Node): XTopic["style"] => {
+  const properties: Record<string, string> = {
+    ...(n.bold ? { "fo:font-weight": "bold" } : {}),
+    ...(n.italic ? { "fo:font-style": "italic" } : {}),
+    ...(n.strike ? { "fo:text-decoration": "line-through" } : {}),
+    ...(n.textColor ? { "fo:color": n.textColor } : {}),
+  };
+  return Object.keys(properties).length ? { id: crypto.randomUUID(), properties } : undefined;
+};
+
 const toX = (n: Node): XTopic => ({
   id: n.id,
   class: "topic",
   title: n.text,
   ...(n.link ? { href: n.link } : {}),
   ...(markersOf(n).length ? { markers: markersOf(n) } : {}),
+  ...(styleOf(n) ? { style: styleOf(n) } : {}),
   ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
   ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
   ...(n.children.length ? { children: { attached: n.children.map(toX) } } : {}),
@@ -108,6 +122,8 @@ const fromX = (t: XTopic): Node => {
   const ids = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
   const prio = ids.map((id) => /^priority-(\d)$/.exec(id)?.[1]).find(Boolean);
   const prog = ids.find((id) => id in XM_PROGRESS);
+  const sp = t.style?.properties ?? {};
+  const color = hex(sp["fo:color"]?.slice(0, 7)); // XMind may append an alpha pair
   return {
     id: crypto.randomUUID(),
     text: t.title ?? "",
@@ -115,6 +131,10 @@ const fromX = (t: XTopic): Node => {
     ...(t.href ? { link: t.href } : {}),
     ...(prio ? { priority: Number(prio) } : {}),
     ...(prog ? { progress: XM_PROGRESS[prog] } : {}),
+    ...(sp["fo:font-weight"] === "bold" ? { bold: true } : {}),
+    ...(sp["fo:font-style"] === "italic" ? { italic: true } : {}),
+    ...(sp["fo:text-decoration"]?.includes("line-through") ? { strike: true } : {}),
+    ...(color ? { textColor: color } : {}),
     ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
     ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
   };

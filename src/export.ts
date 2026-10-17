@@ -1,6 +1,7 @@
 import { Box, Node, findNode, visibleIds } from "./model";
 import { summaryD, summaryGeo } from "./summary";
 import { progressText } from "./task";
+import { hex } from "./textstyle";
 
 /** Point on box `b`'s border in the direction of (tx, ty). */
 export function edgePoint(b: Box, tx: number, ty: number) {
@@ -32,7 +33,8 @@ export function relD(f: Box, t: Box) {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 /** Standalone light-theme SVG of the whole visible map. */
-export function mapSvg(root: Node, boxes: Box[], colorOf: (b: Box) => string) {
+export function mapSvg(root: Node, boxes: Box[], rawColorOf: (b: Box) => string) {
+  const colorOf = (b: Box) => esc(rawColorOf(b)); // colours can come from opened files: never put them in markup unescaped
   const pad = 40;
   const sums = (root.summaries ?? []).flatMap((s) => {
     const g = summaryGeo(root, boxes, s);
@@ -66,7 +68,7 @@ export function mapSvg(root: Node, boxes: Box[], colorOf: (b: Box) => string) {
       if (isRoot || n.color) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${rx}" fill="${c}" fill-opacity="${isRoot ? ".18" : ".2"}"/>`);
     }
     const label = [n.icon, n.priority ? `P${n.priority}` : "", n.progress != null ? progressText(n.progress) : "", n.text || "…", n.note ? "📝" : "", n.link ? "🔗" : ""].filter(Boolean).join(" ");
-    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${isRoot ? 600 : 400}" fill="#1e3a5f">${esc(label)}</text>`);
+    out.push(`<text x="${b.x + b.w / 2}" y="${b.y + b.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="${n.bold ? 700 : isRoot ? 600 : 400}"${n.italic ? ' font-style="italic"' : ""}${n.strike ? ' text-decoration="line-through"' : ""} fill="${hex(n.textColor) ?? "#1e3a5f"}">${esc(label)}</text>`);
   }
   for (const { s, g } of sums) {
     const l = g.label;

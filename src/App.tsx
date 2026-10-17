@@ -9,6 +9,7 @@ import { branchD, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
 import { normalizeUrl } from "./links";
 import { PRIORITIES, PROGRESS, prioColors } from "./task";
+import { textStyle } from "./textstyle";
 import { addSummary, canSummarize, editSummary, removeSummary, siblingSpan, summaryD, summaryGeo } from "./summary";
 
 type S = { root: Node; past: Node[]; future: Node[]; sel: string; edit: string | null };
@@ -328,6 +329,8 @@ export default function App() {
       if (mod) {
         const m: Record<string, () => void> = {
           z: e.shiftKey ? redo : undo, s: saveJson, o: open, c: copy, v: paste, d: duplicate, a: () => setGroup(boxes.map((b) => b.id)),
+          b: () => setNode({ bold: selNode.bold ? undefined : true }),
+          i: () => setNode({ italic: selNode.italic ? undefined : true }),
           x: () => (copy(), del()),
         };
         if (m[k] && !e.altKey) (e.preventDefault(), m[k]());
@@ -642,6 +645,7 @@ export default function App() {
                     <input
                       autoFocus
                       defaultValue={n.text}
+                    style={textStyle(n)}
                       onFocus={(e) => e.target.select()}
                       onBlur={(e) => (e.target.value === n.text ? setS((p) => ({ ...p, edit: null })) : commit((r) => rename(r, b.id, e.target.value)))}
                       onKeyDown={(e) => {
@@ -651,7 +655,7 @@ export default function App() {
                       }}
                     />
                   ) : (
-                    <span>{n.text || "…"}</span>
+                    <span style={textStyle(n)}>{n.text || "…"}</span>
                   )}
                   {n.note && <span className="badge" title={n.note}>📝</span>}
                   {n.link && (
@@ -727,6 +731,18 @@ export default function App() {
                 <button key={i} className={selNode.icon === i ? "on" : ""} onClick={() => setNode({ icon: i })}>{i}</button>
               ))}
               <button onClick={() => setNode({ icon: undefined })}>None</button>
+            </div>
+            <label>Text</label>
+            <div className="row">
+              <button className={selNode.bold ? "on" : ""} title="Bold (⌘B)" onClick={() => setNode({ bold: selNode.bold ? undefined : true })}><b>B</b></button>
+              <button className={selNode.italic ? "on" : ""} title="Italic (⌘I)" onClick={() => setNode({ italic: selNode.italic ? undefined : true })}><i>I</i></button>
+              <button className={selNode.strike ? "on" : ""} title="Strikethrough" onClick={() => setNode({ strike: selNode.strike ? undefined : true })}><s>S</s></button>
+            </div>
+            <div className="row">
+              {theme.palette.map((c) => (
+                <button key={c} className={`sw${selNode.textColor === c ? " on" : ""}`} style={{ background: c }} title="Text colour" onClick={() => setNode({ textColor: c })} />
+              ))}
+              <button onClick={() => setNode({ textColor: undefined })}>Auto</button>
             </div>
             <label>Priority</label>
             <div className="row">
