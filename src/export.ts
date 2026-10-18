@@ -1,4 +1,4 @@
-import { Box, Node, findNode, thumbW, validImage, visibleIds } from "./model";
+import { Box, Node, findNode, mirrorPath, thumbW, unflip, validImage, visibleIds } from "./model";
 import { summaryD, summaryGeo } from "./summary";
 import { progressText } from "./task";
 import { runsSvg, validRuns } from "./rich";
@@ -12,7 +12,8 @@ export function edgePoint(b: Box, tx: number, ty: number) {
 }
 
 /** Curve from parent `p` to child `b`, leaving on the side the child grows towards. */
-export function branchD(b: Box, p: Box) {
+export function branchD(b: Box, p: Box): string {
+  if (b.flip) return mirrorPath(branchD(unflip(b), unflip(p)), b.flip); // drawn in the base structure, then mirrored
   if (b.flow === "down") {
     const x0 = p.x + p.w / 2, y0 = p.y + p.h, x1 = b.x + b.w / 2, my = (y0 + b.y) / 2;
     return `M${x0} ${y0} C${x0} ${my} ${x1} ${my} ${x1} ${b.y}`;
@@ -35,7 +36,8 @@ export function branchD(b: Box, p: Box) {
 }
 
 /** Curly braces for the brace structure: one per parent, spanning its children, with a stem back to the parent. */
-export function braces(boxes: Box[]) {
+export function braces(all: Box[]) {
+  const flip = all.find((b) => b.flip)?.flip, boxes = all.map(unflip); // drawn in the base structure, then mirrored
   const byId = Object.fromEntries(boxes.map((b) => [b.id, b]));
   const groups = new Map<string, Box[]>();
   for (const b of boxes) if (b.flow === "brace" && b.parent) groups.set(b.parent, [...(groups.get(b.parent) ?? []), b]);
@@ -43,11 +45,11 @@ export function braces(boxes: Box[]) {
     const p = byId[pid];
     const xc = Math.min(...kids.map((k) => k.x)), y0 = Math.min(...kids.map((k) => k.y)), y1 = Math.max(...kids.map((k) => k.y + k.h));
     const ym = (y0 + y1) / 2, x0 = p.x + p.w;
-    if (y1 - y0 < 70) return { id: kids[0].id, d: `M${x0} ${ym}H${xc}` }; // a row or two: a plain line will do
+    if (y1 - y0 < 70) return { id: kids[0].id, d: mirrorPath(`M${x0} ${ym}H${xc}`, flip) }; // a row or two: a plain line will do
     const xr = xc - 10, xl = xr - 12, xt = xl - 12; // right end, spine and tip of the brace
     return {
       id: kids[0].id,
-      d: `M${x0} ${ym}H${xt}M${xr} ${y0}Q${xl} ${y0} ${xl} ${y0 + 12}V${ym - 12}Q${xl} ${ym} ${xt} ${ym}Q${xl} ${ym} ${xl} ${ym + 12}V${y1 - 12}Q${xl} ${y1} ${xr} ${y1}`,
+      d: mirrorPath(`M${x0} ${ym}H${xt}M${xr} ${y0}Q${xl} ${y0} ${xl} ${y0 + 12}V${ym - 12}Q${xl} ${ym} ${xt} ${ym}Q${xl} ${ym} ${xl} ${ym + 12}V${y1 - 12}Q${xl} ${y1} ${xr} ${y1}`, flip),
     };
   });
 }

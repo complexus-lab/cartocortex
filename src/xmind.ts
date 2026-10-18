@@ -254,6 +254,11 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   left: "org.xmind.ui.logic.left",
   brace: "org.xmind.ui.brace.right",
   matrix: "org.xmind.ui.spreadsheet.column",
+  up: "org.xmind.ui.org-chart.up",
+  "tree-left": "org.xmind.ui.tree.left",
+  "brace-left": "org.xmind.ui.brace.left",
+  "fish-left": "org.xmind.ui.fishbone.leftHeaded",
+  "map-ccw": "org.xmind.ui.map.anticlockwise",
 };
 
 const toSheet = (root: Node, i: number, out: Out): XSheet => {

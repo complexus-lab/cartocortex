@@ -71,7 +71,7 @@ test("summaries are only drawn in sideways layouts", () => {
 });
 
 test("xmind export/import keeps the structure", async () => {
-  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix"] as const) {
+  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix", "up", "tree-left", "brace-left", "fish-left", "map-ccw"] as const) {
     const back = await importXmindSheets(exportXmind({ ...mk("r"), layout: kind }));
     expect(back[0].layout ?? "right").toBe(kind);
   }
@@ -229,4 +229,64 @@ test("matrix: topics along the top, every stack below, nothing overlaps", () => 
       const p = boxes[i], q = boxes[j];
       expect(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y, `${p.id} overlaps ${q.id}`).toBe(true);
     }
+});
+
+// Mirrored structures: the base layout flipped about the central topic, with connectors, braces and arrow keys following.
+import { branchD } from "./export";
+import { Flip, unflip } from "./model";
+
+const sample = (kind: Node["layout"]) => {
+  let r: Node = { ...mk("root"), layout: kind };
+  for (const t of ["a", "b", "c"]) r = addChild(r, r.id, mk(t));
+  r = addChild(r, r.children[0].id, mk("a1"));
+  return r;
+};
+
+test.each([
+  ["up", "down", { v: true }],
+  ["tree-left", "tree", { h: true }],
+  ["brace-left", "brace", { h: true }],
+  ["fish-left", "fish", { h: true }],
+  ["map-ccw", "map", { h: true }],
+] as [Node["layout"], Node["layout"], Flip][])("%s is the mirror image of %s", (kind, base, flip) => {
+  const mirrored = layout(sample(kind)), plain = layout(sample(base));
+  expect(mirrored).toHaveLength(plain.length);
+  for (const [i, m] of mirrored.entries()) {
+    const p = plain[i];
+    expect(m.flip).toEqual(flip);
+    expect(m.w).toBe(p.w);
+    expect(m.h).toBe(p.h);
+    expect(Math.abs(unflip(m).x - p.x)).toBeLessThan(1e-9);
+    expect(Math.abs(unflip(m).y - p.y)).toBeLessThan(1e-9);
+  }
+  const lean = (bs: ReturnType<typeof layout>, axis: "x" | "y") => {
+    const size = axis === "x" ? "w" : "h";
+    return Math.sign(bs.slice(1).reduce((t, b) => t + b[axis] + b[size] / 2 - (bs[0][axis] + bs[0][size] / 2), 0));
+  };
+  // The branches lean to the opposite side of the central topic.
+  if (flip.h && kind !== "map-ccw") expect(lean(mirrored, "x")).toBe(-lean(plain, "x"));
+  if (flip.v) expect(lean(mirrored, "y")).toBe(-lean(plain, "y"));
+});
+
+test("connectors of a mirrored structure are the base connectors mirrored", () => {
+  const down = layout(sample("down")), up = layout(sample("up"));
+  const d0 = branchD(down[1], down[0]), d1 = branchD(up[1], up[0]);
+  const nums = (d: string) => d.match(/-?\d*\.?\d+/g)!.map(Number);
+  const [a, b] = [nums(d0), nums(d1)];
+  expect(b.length).toBe(a.length);
+  b.forEach((n, i) => expect(Math.abs(n - (i % 2 === 1 ? -a[i] : a[i]))).toBeLessThan(1e-6)); // y mirrored, x kept
+  const leftBrace = braces(layout({ ...sample("brace-left"), children: sample("brace-left").children.concat([mk("d"), mk("e"), mk("f")]) }));
+  expect(leftBrace.length).toBeGreaterThan(0);
+  expect(leftBrace[0].d).toMatch(/-/); // drawn on the negative-x side
+});
+
+test("arrow keys follow a mirrored structure", () => {
+  const r = sample("tree-left"), boxes = layout(r), [a] = r.children;
+  expect(neighbour(r, boxes, a.id, "right")).toBe(r.id); // towards the central topic, which now sits to the right
+  expect(neighbour(r, boxes, a.id, "left")).toBe(a.children[0].id); // away from it, into the children
+  const up = sample("up"), ub = layout(up);
+  expect(neighbour(up, ub, up.children[0].id, "down")).toBe(up.id); // the parent is below
+  expect(neighbour(up, ub, up.id, "up")).toBe(up.children[0].id);
+  const ccw = sample("map-ccw"), cb = layout(ccw);
+  expect(cb.find((b) => b.id === ccw.children[0].id)!.side).toBe(-1); // the first half of a map now grows leftwards
 });
