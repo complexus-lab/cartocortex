@@ -1,4 +1,4 @@
-import { Node } from "./model";
+import { Node, Rel, Summary } from "./model";
 import { fromMarkers, progressMarker } from "./task";
 import { layoutOf, noteStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
@@ -88,7 +88,8 @@ type XTopic = {
   markers?: { markerId: string }[];
   style?: { id?: string; properties?: Record<string, string> };
   children?: { attached?: XTopic[]; detached?: XTopic[]; summary?: XTopic[] };
-  summaries?: unknown[]; boundaries?: unknown[]; labels?: unknown[]; image?: unknown;
+  position?: { x?: number; y?: number };
+  summaries?: { range?: string; topicId?: string }[]; boundaries?: unknown[]; labels?: unknown[]; image?: unknown;
   notes?: { plain?: { content?: string }; html?: unknown };
 };
 
@@ -124,13 +125,30 @@ const toX = (n: Node, known: Set<string>): XTopic => ({
 
 const HANDLED_STYLE = new Set(["fo:font-weight", "fo:font-style", "fo:text-decoration", "fo:color"]);
 
-const fromX = (t: XTopic, ids: Map<string, string>, rep: Report): Node => {
-  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep));
+/** Summaries found while reading topics; they live on the root of a sheet. */
+type Acc = Summary[];
+
+/** "(2,4)" -> [2, 4]: the first and last summarised child. */
+const rangeOf = (r: string | undefined) => {
+  const m = /^\((\d+),(\d+)\)$/.exec(r ?? "");
+  return m ? ([Number(m[1]), Number(m[2])] as const) : null;
+};
+
+const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, isRoot = false): Node => {
+  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep, acc));
+  // Floating topics hang off the central topic; elsewhere XMind has none and neither do we.
+  const floating = t.children?.detached ?? [];
+  if (isRoot) children.push(...floating.map((f) => ({ ...fromX(f, ids, rep, acc), float: { x: f.position?.x ?? 0, y: f.position?.y ?? 0 } })));
+  else rep.add("floating topics dropped", floating.length);
+  for (const sm of t.summaries ?? []) {
+    const r = rangeOf(sm.range), from = r && children[r[0]], to = r && children[r[1]];
+    const title = (t.children?.summary ?? []).find((x) => x.id === sm.topicId)?.title;
+    if (from && to && title != null) acc.push({ id: crypto.randomUUID(), from: from.id, to: to.id, text: title });
+    else rep.add("summaries dropped");
+  }
   const markerIds = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
   const sp = t.style?.properties ?? {};
   rep.add("markers other than priority and progress dropped", markerIds.filter((m) => !isKnownMarker(m)).length);
-  rep.add("floating topics dropped", t.children?.detached?.length ?? 0);
-  rep.add("summaries dropped", (t.summaries?.length ?? 0) + (t.children?.summary?.length ?? 0));
   rep.add("boundaries dropped", t.boundaries?.length ?? 0);
   rep.add("labels dropped", t.labels?.length ?? 0);
   rep.add("images dropped", t.image ? 1 : 0);
@@ -155,7 +173,7 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report): Node => {
   return node;
 };
 
-type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic; relationships?: unknown[] };
+type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic; relationships?: { id?: string; end1Id?: string; end2Id?: string }[] };
 
 const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   right: "org.xmind.ui.logic.right",
@@ -203,20 +221,32 @@ export async function importXmindReport(bytes: Uint8Array): Promise<{ roots: Nod
     return { roots: sheetsFromXml(dec.decode(xml), rep), lost: rep.lines() };
   }
   const ids = new Map<string, string>();
+  const pendingRels: [Node, NonNullable<XSheet["relationships"]>][] = []; // resolved once every topic id is known
   const roots = (JSON.parse(dec.decode(content)) as XSheet[])
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
-      const root = fromX(sh.rootTopic!, ids, rep);
+      const sums: Acc = [];
+      const root = fromX(sh.rootTopic!, ids, rep, sums, true);
+      if (sums.length) root.summaries = sums;
+      pendingRels.push([root, sh.relationships ?? []]);
       const sc = sh.rootTopic!.structureClass ?? "";
       const layout = layoutOf(sc); // matrix, timeline… stay the default logic chart
       if (layout) root.layout = layout;
       noteStructure(sc, layout, rep);
-      rep.add("relationships dropped", sh.relationships?.length ?? 0);
       if (sh.title) root.title = sh.title;
       return root;
     });
   if (!roots.length) throw new Error("no sheet found");
   resolveTopicLinks(roots, ids);
+  for (const [root, list] of pendingRels) {
+    const rels: Rel[] = [];
+    for (const r of list) {
+      const from = ids.get(r.end1Id ?? ""), to = ids.get(r.end2Id ?? "");
+      if (from && to) rels.push({ id: crypto.randomUUID(), from, to });
+      else rep.add("relationships dropped");
+    }
+    if (rels.length) root.rels = rels;
+  }
   return { roots, lost: rep.lines() };
 }
 
