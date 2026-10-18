@@ -1,7 +1,7 @@
 import { Book, bookJson, parseBook } from "./book";
 import { Node, toMarkdown } from "./model";
 import { fromMarkdown, fromOpml, toOpml } from "./outline-io";
-import { exportXmind, importXmindSheets } from "./xmind";
+import { exportXmind, importXmindReport } from "./xmind";
 
 export type Opened = { name: string; path: string | null; bytes: Uint8Array };
 
@@ -25,14 +25,19 @@ export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
   return text(bookJson(roots, cur, true));
 }
 
-/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic. */
-export async function parseDoc(name: string, bytes: Uint8Array): Promise<Book> {
+/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic. `lost` lists what an XMind import could not carry over. */
+export async function parseDocReport(name: string, bytes: Uint8Array): Promise<Book & { lost: string[] }> {
   const ext = extOf(name), text = () => new TextDecoder().decode(bytes);
-  if (ext === "xmind") return { roots: await importXmindSheets(bytes), cur: 0 };
-  if (ext === "opml") return { roots: [fromOpml(text())], cur: 0 };
-  if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0 };
-  return parseBook(text());
+  if (ext === "xmind") return { ...(await importXmindReport(bytes)), cur: 0 };
+  if (ext === "opml") return { roots: [fromOpml(text())], cur: 0, lost: [] };
+  if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0, lost: [] };
+  return { ...parseBook(text()), lost: [] };
 }
+
+export const parseDoc = async (name: string, bytes: Uint8Array): Promise<Book> => {
+  const { lost: _lost, ...book } = await parseDocReport(name, bytes);
+  return book;
+};
 
 const RECENT_KEY = "cartocortex.recent";
 

@@ -1,7 +1,8 @@
 import { Node } from "./model";
 import { fromMarkers, progressMarker } from "./task";
-import { layoutOf, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
+import { layoutOf, noteStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
+import { Report, isKnownMarker } from "./importreport";
 
 // .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
 // read accepts stored and deflate. Legacy XML-only files are not supported.
@@ -84,10 +85,11 @@ async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
 
 type XTopic = {
   id: string; class?: string; title?: string; href?: string; branch?: string; structureClass?: string;
-  notes?: { plain?: { content?: string } };
   markers?: { markerId: string }[];
   style?: { id?: string; properties?: Record<string, string> };
-  children?: { attached?: XTopic[] };
+  children?: { attached?: XTopic[]; detached?: XTopic[]; summary?: XTopic[] };
+  summaries?: unknown[]; boundaries?: unknown[]; labels?: unknown[]; image?: unknown;
+  notes?: { plain?: { content?: string }; html?: unknown };
 };
 
 const markersOf = (n: Node) => [
@@ -120,10 +122,20 @@ const toX = (n: Node, known: Set<string>): XTopic => ({
   ...(n.children.length ? { children: { attached: n.children.map((c) => toX(c, known)) } } : {}),
 });
 
-const fromX = (t: XTopic, ids: Map<string, string>): Node => {
-  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids));
+const HANDLED_STYLE = new Set(["fo:font-weight", "fo:font-style", "fo:text-decoration", "fo:color"]);
+
+const fromX = (t: XTopic, ids: Map<string, string>, rep: Report): Node => {
+  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep));
   const markerIds = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
   const sp = t.style?.properties ?? {};
+  rep.add("markers other than priority and progress dropped", markerIds.filter((m) => !isKnownMarker(m)).length);
+  rep.add("floating topics dropped", t.children?.detached?.length ?? 0);
+  rep.add("summaries dropped", (t.summaries?.length ?? 0) + (t.children?.summary?.length ?? 0));
+  rep.add("boundaries dropped", t.boundaries?.length ?? 0);
+  rep.add("labels dropped", t.labels?.length ?? 0);
+  rep.add("images dropped", t.image ? 1 : 0);
+  rep.add("rich-text notes flattened to plain text", t.notes?.html ? 1 : 0);
+  rep.add("topic styles other than bold, italic, strike and colour dropped", Object.keys(sp).some((k) => !HANDLED_STYLE.has(k)) ? 1 : 0);
   const color = hex(sp["fo:color"]?.slice(0, 7)); // XMind may append an alpha pair
   const to = topicHref(t.href);
   const node: Node = {
@@ -143,7 +155,7 @@ const fromX = (t: XTopic, ids: Map<string, string>): Node => {
   return node;
 };
 
-type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic };
+type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic; relationships?: unknown[] };
 
 const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   right: "org.xmind.ui.logic.right",
@@ -180,29 +192,35 @@ export function exportXmind(roots: Node | Node[]): Uint8Array {
   });
 }
 
-/** Imports every sheet as a root topic (sheet title kept). Markers, styles and relationships are dropped. */
-export async function importXmindSheets(bytes: Uint8Array): Promise<Node[]> {
+/** Imports every sheet as a root topic (sheet title kept) and lists what could not be carried over. */
+export async function importXmindReport(bytes: Uint8Array): Promise<{ roots: Node[]; lost: string[] }> {
+  const rep = new Report();
   const files = await unzip(bytes);
   const content = files.get("content.json"); // XMind Zen and later; it wins over the placeholder content.xml those files also carry
   if (!content) {
     const xml = files.get("content.xml"); // XMind 8 and earlier
     if (!xml) throw new Error("no content.json or content.xml (not an XMind file)");
-    return sheetsFromXml(dec.decode(xml));
+    return { roots: sheetsFromXml(dec.decode(xml), rep), lost: rep.lines() };
   }
   const ids = new Map<string, string>();
   const roots = (JSON.parse(dec.decode(content)) as XSheet[])
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
-      const root = fromX(sh.rootTopic!, ids);
-      const layout = layoutOf(sh.rootTopic!.structureClass ?? ""); // matrix, timeline… stay the default logic chart
+      const root = fromX(sh.rootTopic!, ids, rep);
+      const sc = sh.rootTopic!.structureClass ?? "";
+      const layout = layoutOf(sc); // matrix, timeline… stay the default logic chart
       if (layout) root.layout = layout;
+      noteStructure(sc, layout, rep);
+      rep.add("relationships dropped", sh.relationships?.length ?? 0);
       if (sh.title) root.title = sh.title;
       return root;
     });
   if (!roots.length) throw new Error("no sheet found");
   resolveTopicLinks(roots, ids);
-  return roots;
+  return { roots, lost: rep.lines() };
 }
+
+export const importXmindSheets = async (bytes: Uint8Array): Promise<Node[]> => (await importXmindReport(bytes)).roots;
 
 /** First sheet only. */
 export const importXmind = async (bytes: Uint8Array): Promise<Node> => (await importXmindSheets(bytes))[0];
