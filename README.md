@@ -101,13 +101,15 @@ Saving (desktop app): ⌘S saves to the current file, and asks where the first t
 
 MIT, see [LICENSE](LICENSE).
 
-Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md`, `.xmind` or FreeMind `.mm` as well as `.json`.
+Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md`, `.xmind` or FreeMind `.mm` or MindManager `.mmap` as well as `.json`.
 
 FreeMind / Freeplane: Open reads FreeMind's `.mm` maps (plain or gzipped) — topics, notes, links, links between topics, folding, fill and text colours, bold / italic, priority and progress icons — and left-side topics open as a one-sided or two-sided map. "Export FreeMind" (and Save as `.mm`) writes one root node per sheet, so extra sheets may not show in FreeMind itself; multi-line texts keep their lines, but pictures, relationships, summaries, per-word style, floating positions and structures beyond the sideways layouts are not carried.
 
-Zip-based files (`.xmind`) are refused if they would unpack to more than 64 MB, whatever size they claim, so a booby-trapped map cannot exhaust memory.
+MindManager: Open reads MindManager's `.mmap` maps — a zip holding `Document.xml`, or the flat XML of the MindManager 10 for Mac builds — with topics, notes, links, task priorities and progress, fill and text colours, folding, relationships (as relationship lines), floating topics and callouts; the growth direction of the central topic opens as Logic (right), Logic (left) or Map. "Export MindManager" (and Save as `.mmap`) writes one map per sheet, so extra sheets may not show in MindManager itself; topic links to other topics, pictures, per-word style, boundaries and summaries are not carried. The format was taken from Freeplane's MindManager importer and WiseMapping's, and has not been checked against MindManager itself.
 
-Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml`, FreeMind or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
+Zip-based files (`.xmind`, `.mmap`) are refused if they would unpack to more than 64 MB, whatever size they claim, so a booby-trapped map cannot exhaust memory.
+
+Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml`, FreeMind, MindManager or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
 
 Links between topics: in the panel, "Link to a topic" → "Pick a topic…", then click the target. The source gets a ↪ badge (and "Go ↪" in the panel); clicking it opens any collapsed branches above the target and selects it, also when the target is on another sheet. In `.xmind` files a topic link is `xmind:#<topic id>`: it survives a round trip, and XMind allows one link per topic, so an outside web link wins if a topic has both.
 

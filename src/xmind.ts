@@ -82,7 +82,7 @@ const tooBig = (): never => {
   throw new Error(`this file unpacks to more than ${MAX_UNZIPPED / 1024 / 1024} MB, which Cartocortex refuses to open`);
 };
 
-async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
+export async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   let e = b.length - 22;
   while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
