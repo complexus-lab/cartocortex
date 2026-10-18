@@ -24,7 +24,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
+  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "vline" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
   themeColors?: string[]; // the "custom" theme: central topic and accent, then six branch colours (#rrggbb)
   title?: string; // sheet name (tab label); falls back to the central topic text
@@ -37,7 +37,7 @@ export type Box = {
   parent?: string; depth: number;
   side: 1 | -1; // which side of the root the node grows towards
   branch: number; // index of the top-level ancestor (-1 for the root)
-  flow: "right" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
+  flow: "right" | "down" | "tree" | "fish" | "line" | "vline" | "brace" | "matrix"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
   anchor?: { x: number; y: number }; // fishbone and timeline: where this topic's connector starts or meets the line
   flip?: Flip; // the structure is a mirror image of its base (org chart up, tree left…): the box is already mirrored, `unflip` gives the base geometry
 };
@@ -257,6 +257,32 @@ function fishbone(root: Node): Raw[] {
   return out;
 }
 
+const VT = { GAP: 40 };
+
+/**
+ * Vertical timeline: the root heads a vertical line and the top-level topics sit on it, in order, alternating right and left of the line.
+ * Each topic's descendants grow outward from it as a tidy tree. Every box carries its side; a topic's `anchor` is where its stretch of line starts.
+ */
+function vtimeline(root: Node): (Raw & { side: 1 | -1 })[] {
+  const rw = widthOf(root), spine = rw / 2;
+  const out: (Raw & { side: 1 | -1 })[] = [{ id: root.id, x: 0, y: 0, w: rw, h: H, depth: 0, side: 1 }];
+  const free = { 1: H + VT.GAP, [-1]: H + VT.GAP }; // first free y on each side of the line
+  let prev = H; // where the previous stretch of line ended: the bottom of the root, then the previous topic's centre
+  (root.collapsed ? [] : root.children).forEach((label, k) => {
+    const side = k % 2 === 0 ? 1 : -1, tree = half(label);
+    const top = Math.min(...tree.map((b) => b.y)), bottom = Math.max(...tree.map((b) => b.y + b.h)), cy = tree[0].y + H / 2;
+    const y = Math.max(free[side] + (cy - top), k === 0 ? H + VT.GAP + H / 2 : prev + H + GAP_Y); // the topic's centre on the line
+    const dy = y - cy;
+    for (const b of tree) {
+      const x = side === 1 ? spine + VT.GAP + b.x : spine - VT.GAP - b.x - b.w;
+      out.push({ ...b, x, y: b.y + dy, side, depth: b.depth + 1, ...(b === tree[0] ? { parent: root.id, anchor: { x: spine, y: prev } } : {}) });
+    }
+    free[side] = bottom + dy + GAP_Y;
+    prev = y;
+  });
+  return out;
+}
+
 const TL = { GAP: 36, ROW: 14, NEST: 24 };
 
 /**
@@ -302,11 +328,13 @@ function timeline(root: Node, alternate = true): Raw[] {
 export function layout(root: Node): Box[] {
   const [base, flip] = VARIANTS[root.layout ?? "right"] ?? [root.layout ?? "right", undefined];
   const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
-  const flows: Record<string, Box["flow"]> = { down: "down", tree: "tree", fish: "fish", line: "line", matrix: "matrix", brace: "brace" };
+  const flows: Record<string, Box["flow"]> = { down: "down", tree: "tree", fish: "fish", line: "line", vline: "vline", matrix: "matrix", brace: "brace" };
   const flow = flows[base] ?? "right";
   const out: Box[] = [];
 
-  if (flow !== "right" && flow !== "brace") {
+  if (flow === "vline") {
+    out.push(...vtimeline({ ...root, children: kids }).map((b): Box => ({ ...b, branch: -1, flow })));
+  } else if (flow !== "right" && flow !== "brace") {
     const raw = { down: vertical, tree: indented, fish: fishbone, line: timeline, matrix: (r: Node) => timeline(r, false) }[flow]({ ...root, children: kids });
     out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
   } else {
@@ -365,6 +393,10 @@ export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "r
     if ((me.flip.h && (dir === "left" || dir === "right")) || (me.flip.v && (dir === "up" || dir === "down"))) dir = swap[dir];
   }
   const firstKid = () => (findNode(root, id)!.collapsed ? undefined : findNode(root, id)!.children.find((c) => !c.float))?.id ?? id;
+  if (me.flow === "vline" && me.depth <= 1 && (dir === "up" || dir === "down")) {
+    const stops = boxes.filter((b) => b.flow === "vline" && b.depth <= 1).sort((a, b) => a.y - b.y); // the head, then the topics down the line
+    return (stops[stops.findIndex((b) => b.id === id) + (dir === "down" ? 1 : -1)] ?? me).id;
+  }
   if (me.flow === "down") {
     if (dir === "up") return me.parent ?? id;
     if (dir === "down") return firstKid();

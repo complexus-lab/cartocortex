@@ -19,6 +19,7 @@ export function branchD(b: Box, p: Box): string {
     return `M${x0} ${y0} C${x0} ${my} ${x1} ${my} ${x1} ${b.y}`;
   }
   if (b.flow === "brace") return ""; // drawn per parent by `braces`
+  if (b.flow === "vline" && b.anchor) return `M${b.anchor.x} ${b.anchor.y}V${b.y + b.h / 2}H${b.side === 1 ? b.x : b.x + b.w}`; // down the line from the previous topic, then across to this one
   if (b.flow === "line" || b.flow === "matrix") {
     if (b.anchor) return `M${b.anchor.x} ${b.anchor.y}H${b.x}`; // along the line from the previous topic
     return `M${p.x + 12} ${b.y > p.y ? p.y + p.h : p.y}V${b.y + b.h / 2}H${b.x}`; // a trunk from the parent, then across to the row
