@@ -60,7 +60,7 @@ export function zip(files: Record<string, string>): Uint8Array {
 const inflate = async (b: Uint8Array) =>
   new Uint8Array(await new Response(new Blob([b as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
 
-async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
+export async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   let e = b.length - 22;
   while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
