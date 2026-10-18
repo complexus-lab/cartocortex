@@ -57,8 +57,29 @@ export function zip(files: Record<string, string>): Uint8Array {
   return out;
 }
 
-const inflate = async (b: Uint8Array) =>
-  new Uint8Array(await new Response(new Blob([b as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+/** The most a zip may unpack to, in total: a few KB of deflate can claim gigabytes, and a map file is untrusted input. */
+export const MAX_UNZIPPED = 64 * 1024 * 1024;
+
+/** Inflate `b`, giving up as soon as the output would pass `room` bytes. */
+async function inflate(b: Uint8Array, room: number): Promise<Uint8Array> {
+  const reader = new Blob([b as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader();
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if ((n += value.length) > room) (await reader.cancel(), tooBig());
+    parts.push(value);
+  }
+  const out = new Uint8Array(n);
+  let at = 0;
+  for (const p of parts) (out.set(p, at), (at += p.length));
+  return out;
+}
+
+const tooBig = (): never => {
+  throw new Error(`this file unpacks to more than ${MAX_UNZIPPED / 1024 / 1024} MB, which Cartocortex refuses to open`);
+};
 
 async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
@@ -68,7 +89,9 @@ async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
   const count = v.getUint16(e + 10, true);
   let p = v.getUint32(e + 16, true);
   const out = new Map<string, Uint8Array>();
+  let total = 0; // bytes unpacked so far, across all entries
   for (let i = 0; i < count; i++) {
+    if (p + 46 > b.length) throw new Error("corrupt zip file");
     const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true);
     const nlen = v.getUint16(p + 28, true), elen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
     const lo = v.getUint32(p + 42, true);
@@ -76,7 +99,10 @@ async function unzip(b: Uint8Array): Promise<Map<string, Uint8Array>> {
     const start = lo + 30 + v.getUint16(lo + 26, true) + v.getUint16(lo + 28, true);
     const raw = b.subarray(start, start + csize);
     if (method !== 0 && method !== 8) throw new Error(`unsupported zip method ${method}`);
-    out.set(name, method === 8 ? await inflate(raw) : raw);
+    if (total + v.getUint32(p + 24, true) > MAX_UNZIPPED) tooBig(); // the size the entry claims, before unpacking anything
+    const data = method === 8 ? await inflate(raw, MAX_UNZIPPED - total) : raw; // and the size it really has
+    if ((total += data.length) > MAX_UNZIPPED) tooBig();
+    out.set(name, data);
     p += 46 + nlen + elen + clen;
   }
   return out;
