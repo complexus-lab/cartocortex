@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import App, { KEY } from "./App";
 import { baseName, confirmDiscard } from "./files";
 import { clearTab, leftTabs, setUnsaved } from "./recovery";
@@ -16,11 +16,32 @@ export default function Shell() {
   const [active, setActive] = useState(0);
   const nextId = useRef(Math.max(0, ...left.map((l) => l.id)) + 1);
 
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
   const add = (path?: string) => {
+    const open = path ? tabsRef.current.find((t) => t.path === path) : undefined;
+    if (open) return setActive(open.id); // already open: show it instead of a second copy
     const id = nextId.current++;
     setTabs((t) => [...t, { id, path, name: path ? baseName(path) : "Untitled", dirty: false }]);
     setActive(id);
   };
+  // Files the system hands us (double-click, Open With): the ones that arrived before this page was ready, then live ones.
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let off: (() => void) | undefined, stopped = false;
+    (async () => {
+      const [{ invoke }, { listen }] = await Promise.all([import("@tauri-apps/api/core"), import("@tauri-apps/api/event")]);
+      const un = await listen<string>("open-file", (e) => add(e.payload));
+      if (stopped) return un();
+      off = un;
+      for (const path of await invoke<string[]>("take_pending_opens")) add(path);
+    })().catch(() => {});
+    return () => {
+      stopped = true;
+      off?.();
+    };
+  }, []);
   const meta = (id: number, name: string, dirty: boolean) =>
     setTabs((t) => (t.some((x) => x.id === id && (x.name !== name || x.dirty !== dirty)) ? t.map((x) => (x.id === id ? { ...x, name, dirty } : x)) : t));
   const close = async (id: number) => {
