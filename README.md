@@ -44,7 +44,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Row-wise matrices, tree tables and the unbalanced map, which open as the nearest structure; XMind's smileys, arrows, font sizes and line styles. An import lists what it could not keep.
+Tree tables and the unbalanced map, which open as the nearest structure; XMind's smileys, arrows, font sizes and line styles. An import lists what it could not keep.
 
 ## Added
 
