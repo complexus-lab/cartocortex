@@ -142,9 +142,10 @@ export function resolveTopicLinks(roots: Node[], ids: Map<string, string>) {
   roots.forEach(fix);
 }
 
-function topicFromXml(t: XNode, ids: Map<string, string>, rep: Report, bounds: string[]): Node {
+function topicFromXml(t: XNode, ids: Map<string, string>, rep: Report, bounds: string[], rootClass?: string): Node {
+  if (rootClass !== undefined && t.attrs["structure-class"] && t.attrs["structure-class"] !== rootClass) rep.add("structures set on individual topics dropped");
   const attached = kid(t, "children")?.children.find((c) => c.name === "topics" && (c.attrs.type ?? "attached") === "attached");
-  const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids, rep, bounds));
+  const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids, rep, bounds, rootClass ?? t.attrs["structure-class"] ?? ""));
   const subs = kid(t, "children")?.children.filter((c) => c.name === "topics") ?? [];
   rep.add("floating topics dropped", subs.filter((c) => c.attrs.type === "detached").reduce((n, c) => n + c.children.length, 0));
   rep.add("summaries dropped", subs.filter((c) => c.attrs.type === "summary").reduce((n, c) => n + c.children.length, 0));

@@ -218,7 +218,7 @@ const picturesOf = (files: Map<string, Uint8Array>, rep: Report): Pictures => (t
 };
 
 /** Summaries and boundaries found while reading topics; both live on the root of a sheet. */
-type Acc = { sums: Summary[]; bounds: string[] };
+type Acc = { sums: Summary[]; bounds: string[]; rootClass?: string };
 
 /** "(2,4)" -> [2, 4]: the first and last summarised child. */
 const rangeOf = (r: string | undefined) => {
@@ -227,6 +227,8 @@ const rangeOf = (r: string | undefined) => {
 };
 
 const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: Pictures, isRoot = false): Node => {
+  if (isRoot) acc.rootClass = t.structureClass;
+  else if (t.structureClass && t.structureClass !== acc.rootClass) rep.add("structures set on individual topics dropped");
   const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep, acc, pic));
   // Floating topics hang off the central topic; elsewhere XMind has none and neither do we.
   const floating = t.children?.detached ?? [];

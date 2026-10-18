@@ -124,3 +124,15 @@ test("XMind 7 boundaries are read too", async () => {
   expect(roots[0].bounds).toEqual([roots[0].children[1].id, ...roots[0].children.map((k) => k.id)]); // "(0,)" runs to the last child
   expect(lost).toEqual(["boundary titles dropped", "boundaries over several topics drawn around each topic"]);
 });
+
+test("a structure set on a single topic is reported, one equal to the sheet's is not", async () => {
+  const sheet = [{ id: "s", class: "sheet", title: "S", rootTopic: { id: "r", title: "root", structureClass: "org.xmind.ui.map.clockwise", children: { attached: [
+    { id: "a", title: "A", structureClass: "org.xmind.ui.org-chart.down", children: { attached: [{ id: "a1", title: "A1", structureClass: "org.xmind.ui.org-chart.down" }] } },
+    { id: "b", title: "B", structureClass: "org.xmind.ui.map.clockwise" },
+  ] } } }];
+  const { lost } = await importXmindReport(zip({ "content.json": JSON.stringify(sheet) }));
+  expect(lost).toEqual(["2 × structures set on individual topics dropped"]);
+  const xml = `<xmap-content><sheet><topic id="r" structure-class="org.xmind.ui.logic.right"><title>r</title><children><topics type="attached">
+    <topic id="a" structure-class="org.xmind.ui.tree.right"><title>a</title></topic><topic id="b"><title>b</title></topic></topics></children></topic></sheet></xmap-content>`;
+  expect((await importXmindReport(zip({ "content.xml": xml }))).lost).toEqual(["structures set on individual topics dropped"]);
+});
