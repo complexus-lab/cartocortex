@@ -101,11 +101,13 @@ Saving (desktop app): ⌘S saves to the current file, and asks where the first t
 
 MIT, see [LICENSE](LICENSE).
 
-Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md` or `.xmind` as well as `.json`.
+Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md`, `.xmind` or FreeMind `.mm` as well as `.json`.
+
+FreeMind / Freeplane: Open reads FreeMind's `.mm` maps (plain or gzipped) — topics, notes, links, links between topics, folding, fill and text colours, bold / italic, priority and progress icons — and left-side topics open as a one-sided or two-sided map. "Export FreeMind" (and Save as `.mm`) writes one root node per sheet, so extra sheets may not show in FreeMind itself; multi-line texts keep their lines, but pictures, relationships, summaries, per-word style, floating positions and structures beyond the sideways layouts are not carried.
 
 Zip-based files (`.xmind`) are refused if they would unpack to more than 64 MB, whatever size they claim, so a booby-trapped map cannot exhaust memory.
 
-Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml` or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
+Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml`, FreeMind or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
 
 Links between topics: in the panel, "Link to a topic" → "Pick a topic…", then click the target. The source gets a ↪ badge (and "Go ↪" in the panel); clicking it opens any collapsed branches above the target and selects it, also when the target is on another sheet. In `.xmind` files a topic link is `xmind:#<topic id>`: it survives a round trip, and XMind allows one link per topic, so an outside web link wins if a topic has both.
 

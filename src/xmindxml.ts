@@ -9,7 +9,7 @@ export type XNode = { name: string; attrs: Record<string, string>; children: XNo
 
 const local = (name: string) => name.replace(/^.*:/, ""); // drop namespace prefixes: xlink:href -> href
 
-const decode = (s: string) =>
+export const decode = (s: string) =>
   s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (m, e: string) => {
     if (e[0] === "#") {
       const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1));
