@@ -1,10 +1,13 @@
 name: Release
 
 # Push a tag such as v0.1.0 to build the desktop app for macOS, Windows and Linux.
-# The result is a draft GitHub release to review and publish by hand. The builds are not code-signed.
+# The result is a draft GitHub release to review and publish by hand.
+# Run it by hand from the Actions tab (workflow_dispatch) to build everything without a release: the installers come back as workflow artifacts.
+# macOS builds are signed and notarized when the Apple secrets listed in RELEASING.md exist; without them they stay unsigned.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,6 +27,8 @@ jobs:
           - os: windows-latest
             args: ""
     runs-on: ${{ matrix.os }}
+    env:
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,12 +47,38 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+      # Only export the signing variables when all of them exist: the bundler treats an empty certificate as a configured one and fails.
+      - name: macOS signing and notarization
+        if: startsWith(matrix.os, 'macos') && env.HAS_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            echo "$v=${!v}" >> "$GITHUB_ENV"
+          done
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Cartocortex ${{ github.ref_name }}
-          releaseBody: Unsigned build. On macOS, right-click the app and choose Open the first time.
+          releaseBody: ${{ env.HAS_APPLE_CERT == 'true' && 'macOS builds are signed and notarized. Windows and Linux builds are not signed.' || 'Unsigned build. On macOS, right-click the app and choose Open the first time.' }}
           releaseDraft: true
           args: ${{ matrix.args }}
+      - name: Keep the installers of a manual run
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartocortex-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            src-tauri/target/**/release/bundle/msi/*.msi
+            src-tauri/target/**/release/bundle/nsis/*.exe
+            src-tauri/target/**/release/bundle/deb/*.deb
+            src-tauri/target/**/release/bundle/appimage/*.AppImage
