@@ -9,6 +9,7 @@ import { toFreemind } from "./freemind";
 import { toIthoughts } from "./ithoughts";
 import { toMindmanager } from "./mindmanager";
 import { toMindomo } from "./mindomo";
+import { toSimplemind } from "./simplemind";
 import { toWisemapping } from "./wisemapping";
 import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
@@ -606,6 +607,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
           { label: "MindManager (.mmap)", on: () => saveFile(fileName("mmap"), "mmap", toMindmanager(park().roots)) },
           { label: "Mindomo (.mom)", on: () => saveFile(fileName("mom"), "mom", toMindomo(park().roots)) },
           { label: "iThoughts (.itmz)", on: () => saveFile(fileName("itmz"), "itmz", toIthoughts(park().roots)) },
+          { label: "SimpleMind (.smmx)", on: () => saveFile(fileName("smmx"), "smmx", toSimplemind(park().roots)) },
           { label: "WiseMapping (.wxml)", on: () => saveFile(fileName("wxml"), "wxml", toWisemapping(park().roots)) },
           { label: "Image (.png)", on: () => exportImage("png") },
           { label: "Document (.pdf)", on: () => exportImage("pdf") },
