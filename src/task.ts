@@ -21,9 +21,19 @@ export const progressMarker = (pct: number) =>
 
 export const progressText = (pct: number) => (pct >= 100 ? "✓" : `${Math.round(pct)}%`);
 
-/** Priority and progress from XMind marker ids; other markers (flags, symbols…) are ignored. */
-export function fromMarkers(ids: string[]): { priority?: number; progress?: number } {
+/** The XMind markers that stand for one of the editor's icons: any star or flag colour, and four of the symbols. */
+const ICON_OF_MARKER: [RegExp, string][] = [[/^star-/, "⭐"], [/^flag-/, "🚩"], [/^symbol-exclam$/, "❗"], [/^symbol-question$/, "❓"], [/^symbol-right$/, "✅"], [/^symbol-wrong$/, "❌"]];
+
+/** The marker to write for each icon; the others (💡 🔥 ⚠️ ❤️) have no XMind id we are sure of, so they are not exported. */
+export const MARKER_OF_ICON: Record<string, string> = { "⭐": "star-red", "🚩": "flag-red", "❗": "symbol-exclam", "❓": "symbol-question", "✅": "symbol-right", "❌": "symbol-wrong" };
+
+/** Priority, progress and the first icon from XMind marker ids; other markers (smileys, arrows, people…) have no counterpart. */
+export function fromMarkers(ids: string[]): { priority?: number; progress?: number; icon?: string } {
   const prio = ids.map((id) => /^priority-(\d)$/.exec(id)?.[1]).find(Boolean);
   const prog = ids.find((id) => id in XM_PROGRESS);
-  return { ...(prio ? { priority: Number(prio) } : {}), ...(prog ? { progress: XM_PROGRESS[prog] } : {}) };
+  const icon = ids.map((id) => ICON_OF_MARKER.find(([re]) => re.test(id))?.[1]).find(Boolean);
+  return { ...(prio ? { priority: Number(prio) } : {}), ...(prog ? { progress: XM_PROGRESS[prog] } : {}), ...(icon ? { icon } : {}) };
 }
+
+/** How many of these marker ids `fromMarkers` cannot keep. */
+export const lostMarkers = (ids: string[]) => ids.length - Object.keys(fromMarkers(ids)).length;

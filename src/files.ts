@@ -4,7 +4,7 @@ import { fromMindmanagerBytes, toMindmanager } from "./mindmanager";
 import { Node, toMarkdown } from "./model";
 import { fromMarkdown, fromOpml, toOpml } from "./outline-io";
 import { fromWisemapping, toWisemapping } from "./wisemapping";
-import { exportXmind, importXmindSheets } from "./xmind";
+import { exportXmind, importXmindReport } from "./xmind";
 
 export type Opened = { name: string; path: string | null; bytes: Uint8Array };
 
@@ -31,17 +31,22 @@ export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
   return text(bookJson(roots, cur, true));
 }
 
-/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind or MindManager map gives one sheet per root topic; a WiseMapping map gives one sheet. */
-export async function parseDoc(name: string, bytes: Uint8Array): Promise<Book> {
+/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind or MindManager map gives one sheet per root topic; a WiseMapping map gives one sheet. `lost` lists what an XMind import could not carry over. */
+export async function parseDocReport(name: string, bytes: Uint8Array): Promise<Book & { lost: string[] }> {
   const ext = extOf(name), text = () => new TextDecoder().decode(bytes);
-  if (ext === "xmind") return { roots: await importXmindSheets(bytes), cur: 0 };
-  if (ext === "opml") return { roots: [fromOpml(text())], cur: 0 };
-  if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0 };
-  if (ext === "mm") return { roots: await fromFreemindBytes(bytes), cur: 0 };
-  if (ext === "mmap") return { roots: await fromMindmanagerBytes(bytes), cur: 0 };
-  if (ext === "wxml") return { roots: fromWisemapping(text()), cur: 0 };
-  return parseBook(text());
+  if (ext === "xmind") return { ...(await importXmindReport(bytes)), cur: 0 };
+  if (ext === "opml") return { roots: [fromOpml(text())], cur: 0, lost: [] };
+  if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0, lost: [] };
+  if (ext === "mm") return { roots: await fromFreemindBytes(bytes), cur: 0, lost: [] };
+  if (ext === "mmap") return { roots: await fromMindmanagerBytes(bytes), cur: 0, lost: [] };
+  if (ext === "wxml") return { roots: fromWisemapping(text()), cur: 0, lost: [] };
+  return { ...parseBook(text()), lost: [] };
 }
+
+export const parseDoc = async (name: string, bytes: Uint8Array): Promise<Book> => {
+  const { lost: _lost, ...book } = await parseDocReport(name, bytes);
+  return book;
+};
 
 const RECENT_KEY = "cartocortex.recent";
 
@@ -67,9 +72,22 @@ export async function readPath(path: string): Promise<Opened> {
   return { name: baseName(path), path, bytes: await readFile(path) };
 }
 
+type Fs = { writeFile(p: string, b: Uint8Array): Promise<void>; rename(a: string, b: string): Promise<void>; remove(p: string): Promise<void> };
+
+/** Writes next to the target and renames over it, so a crash mid-write cannot leave a truncated file. If the sibling cannot be written or renamed (permissions), falls back to writing the target directly. */
+export async function writeSafely(path: string, bytes: Uint8Array, fs: Fs) {
+  const tmp = `${path}.tmp`;
+  try {
+    await fs.writeFile(tmp, bytes);
+    await fs.rename(tmp, path);
+  } catch {
+    await fs.remove(tmp).catch(() => {});
+    await fs.writeFile(path, bytes);
+  }
+}
+
 export async function writePath(path: string, bytes: Uint8Array) {
-  const { writeFile } = await import("@tauri-apps/plugin-fs");
-  await writeFile(path, bytes);
+  await writeSafely(path, bytes, await import("@tauri-apps/plugin-fs"));
 }
 
 /** The system "open" dialog (desktop app) or a file input (browser). */

@@ -1,5 +1,6 @@
 import { Node } from "./model";
-import { fromMarkers } from "./task";
+import { fromMarkers, lostMarkers } from "./task";
+import { Report } from "./importreport";
 
 // Reader for the XML-only .xmind format (XMind 8 and earlier: content.xml inside the zip).
 // Deliberately tiny and strict: no DOCTYPE (so no entity tricks), only the five predefined entities plus numeric ones.
@@ -78,17 +79,63 @@ export function parseXml(src: string): XNode {
 const kid = (n: XNode, name: string) => n.children.find((c) => c.name === name);
 const allText = (n: XNode): string => n.text.trim() || n.children.map(allText).filter(Boolean).join("\n");
 
-/** Logic, map, org chart, tree chart and fishbone; anything else (matrix, timeline…) stays the default logic chart. */
+/** The structure for an XMind structure class, or undefined for the default logic chart. Variants the editor lacks open as the nearest one. */
 export function layoutOf(structureClass: string): Node["layout"] | undefined {
   if (structureClass.includes("logic.left")) return "left";
-  if (structureClass.includes("brace")) return "brace"; // brace.left opens as the right-hand brace
-  if (structureClass.includes("spreadsheet")) return "matrix"; // XMind's matrix, row or column
-  if (structureClass.includes("fishbone")) return "fish";
-  if (structureClass.includes("timeline")) return "line"; // every timeline variant opens as the horizontal one
-  if (structureClass.includes("org-chart")) return "down";
-  if (structureClass.includes("tree")) return "tree";
+  if (structureClass.includes("brace")) return structureClass.includes("brace.left") ? "brace-left" : "brace";
+  if (structureClass.includes("spreadsheet")) return /row/i.test(structureClass) ? "matrix-row" : "matrix"; // XMind's matrix, by rows or by columns
+  if (structureClass.includes("fishbone")) return structureClass.includes("leftHeaded") ? "fish-left" : "fish";
+  if (structureClass.includes("timeline")) return structureClass.includes("vertical") ? "vline" : "line";
+  if (structureClass.includes("org-chart")) return structureClass.includes("org-chart.up") ? "up" : "down";
+  if (structureClass.includes("treetable")) return "tree"; // a table with tree rows: nearest is the indented tree
+  if (structureClass.includes("tree")) return structureClass.includes("tree.left") ? "tree-left" : "tree";
+  if (structureClass.includes("map.anticlockwise")) return "map-ccw";
   if (structureClass.includes("map")) return "map";
   return undefined;
+}
+
+/** Structure classes that open exactly as XMind draws them (layout name -> class); any other class is approximated. */
+const EXACT: Record<string, string> = {
+  "org.xmind.ui.logic.right": "right", "org.xmind.ui.logic.left": "left", "org.xmind.ui.map.clockwise": "map",
+  "org.xmind.ui.org-chart.down": "down", "org.xmind.ui.tree.right": "tree", "org.xmind.ui.fishbone.rightHeaded": "fish",
+  "org.xmind.ui.timeline.horizontal": "line", "org.xmind.ui.timeline.vertical": "vline", "org.xmind.ui.brace.right": "brace", "org.xmind.ui.spreadsheet.column": "matrix", "org.xmind.ui.spreadsheet.row": "matrix-row",
+  "org.xmind.ui.org-chart.up": "up", "org.xmind.ui.tree.left": "tree-left", "org.xmind.ui.brace.left": "brace-left",
+  "org.xmind.ui.fishbone.leftHeaded": "fish-left", "org.xmind.ui.map.anticlockwise": "map-ccw",
+};
+
+/** Records a structure XMind uses that opens as the nearest one here. An absent class is XMind's default and loses nothing. */
+export function noteStructure(structureClass: string, layout: Node["layout"], rep: Report) {
+  if (!structureClass || EXACT[structureClass] === (layout ?? "right")) return;
+  rep.add(`structure ${structureClass.replace(/^org\.xmind\.ui\./, "")} opened as ${layout ?? "logic chart"}`);
+}
+
+/**
+ * The topics the boundaries of `t` wrap. "master" wraps `t` itself; a range wraps those of its children. The editor has no boundary over
+ * several siblings, so each of them gets its own, and the title a boundary can carry has nowhere to go.
+ */
+export function boundTopics(t: Node, boundaries: { range?: string; title?: string }[], rep: Report): string[] {
+  const out: string[] = [];
+  for (const b of boundaries) {
+    const m = /^\((\d+),(\d*)\)$/.exec(b.range ?? ""); // XMind 7 writes an open end, "(2,)", for "to the last one"
+    const wrapped = b.range === "master" ? [t] : m ? t.children.slice(Number(m[1]), m[2] === "" ? undefined : Number(m[2]) + 1) : [];
+    if (!wrapped.length) rep.add("boundaries dropped");
+    if (wrapped.length > 1) rep.add("boundaries over several topics drawn around each topic");
+    if (wrapped.length && b.title?.trim()) rep.add("boundary titles dropped");
+    out.push(...wrapped.map((w) => w.id));
+  }
+  return out;
+}
+
+/**
+ * What an XMind structure on a single topic becomes: the layout it can have in the editor (an org chart or tree chart branch inside a
+ * logic chart or map), "drop" when it cannot be kept, undefined when it is the sheet's own structure and changes nothing.
+ */
+export function topicStructure(structureClass: string, rootClass: string): Node["layout"] | "drop" | undefined {
+  if (!structureClass || structureClass === rootClass) return undefined;
+  const sheet = layoutOf(rootClass), mine = layoutOf(structureClass);
+  const sideways = sheet === undefined || sheet === "left" || sheet === "map"; // the sheets that can hold branches with a structure of their own
+  const keeps = mine === "down" || mine === "up" || mine === "tree" || mine === "tree-left";
+  return sideways && keeps && EXACT[structureClass] === mine ? mine : "drop";
 }
 
 /** XMind writes a link to another topic as the href "xmind:#<topic id>". */
@@ -107,12 +154,19 @@ export function resolveTopicLinks(roots: Node[], ids: Map<string, string>) {
   roots.forEach(fix);
 }
 
-function topicFromXml(t: XNode, ids: Map<string, string>): Node {
+function topicFromXml(t: XNode, ids: Map<string, string>, rep: Report, bounds: string[], rootClass?: string): Node {
+  const own = rootClass === undefined ? undefined : topicStructure(t.attrs["structure-class"] ?? "", rootClass);
+  if (own === "drop") rep.add("structures set on individual topics dropped");
   const attached = kid(t, "children")?.children.find((c) => c.name === "topics" && (c.attrs.type ?? "attached") === "attached");
-  const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids));
+  const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids, rep, bounds, rootClass ?? t.attrs["structure-class"] ?? ""));
+  const subs = kid(t, "children")?.children.filter((c) => c.name === "topics") ?? [];
+  rep.add("floating topics dropped", subs.filter((c) => c.attrs.type === "detached").reduce((n, c) => n + c.children.length, 0));
+  rep.add("summaries dropped", subs.filter((c) => c.attrs.type === "summary").reduce((n, c) => n + c.children.length, 0));
+  rep.add("labels dropped", kid(t, "labels")?.children.length ?? 0);
   const notes = kid(t, "notes");
   const note = notes ? (kid(notes, "plain") ? kid(notes, "plain")!.text : allText(notes)).trim() : "";
   const markers = (kid(t, "marker-refs")?.children ?? []).map((m) => m.attrs["marker-id"]).filter(Boolean);
+  rep.add("markers with no counterpart dropped", lostMarkers(markers));
   const to = topicHref(t.attrs.href);
   const node: Node = {
     id: crypto.randomUUID(),
@@ -123,21 +177,29 @@ function topicFromXml(t: XNode, ids: Map<string, string>): Node {
     ...(t.attrs.branch === "folded" && children.length ? { collapsed: true } : {}),
     ...fromMarkers(markers),
   };
+  if (own && own !== "drop") node.layout = own;
+  const boundaries = (kid(t, "boundaries")?.children ?? []).map((b) => ({ range: b.attrs.range, title: kid(b, "title")?.text }));
+  bounds.push(...boundTopics(node, boundaries, rep));
   if (t.attrs.id) ids.set(t.attrs.id, node.id);
   return node;
 }
 
 /** Every sheet's root topic from an XMind 8 content.xml. Styles, relationships, floating topics and other markers are dropped. */
-export function sheetsFromXml(src: string): Node[] {
+export function sheetsFromXml(src: string, rep = new Report()): Node[] {
   const ids = new Map<string, string>();
   const roots = parseXml(src)
     .children.filter((c) => c.name === "sheet")
     .flatMap((sheet) => {
       const t = kid(sheet, "topic");
       if (!t) return [];
-      const root = topicFromXml(t, ids);
-      const layout = layoutOf(t.attrs["structure-class"] ?? "");
+      const bounds: string[] = [];
+      const root = topicFromXml(t, ids, rep, bounds);
+      if (bounds.length) root.bounds = bounds;
+      const sc = t.attrs["structure-class"] ?? "";
+      const layout = layoutOf(sc);
       if (layout) root.layout = layout;
+      noteStructure(sc, layout, rep);
+      rep.add("relationships dropped", kid(sheet, "relationships")?.children.length ?? 0);
       const title = kid(sheet, "title")?.text.trim();
       if (title) root.title = title;
       return [root];
