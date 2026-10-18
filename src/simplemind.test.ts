@@ -61,7 +61,8 @@ test("writes an .smmx SimpleMind can open again", async () => {
   expect([bytes[0], bytes[1]]).toEqual([0x50, 0x4b]); // a zip
   const parts = await unzip(bytes);
   expect([...parts.keys()]).toEqual(["document/mindmap.xml"]); // the one part SimpleMind needs
-  const xml = new TextDecoder().decode(parts.get("document/mindmap.xml")!);
+  // The byte-order mark must survive the decode: TextDecoder skips a leading one unless told not to.
+  const xml = new TextDecoder("utf-8", { ignoreBOM: true }).decode(parts.get("document/mindmap.xml")!);
   expect(xml.startsWith("\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE simplemind-mindmaps>\n")).toBe(true); // the shape SimpleMind itself writes
   expect(xml).toContain('<topic id="0" parent="-1"'); // a flat list, the root pointing at no parent
   expect(xml).toContain('text="Central &quot;topic&quot;\\N&amp; more"'); // attribute escapes, "\N" for the line break
