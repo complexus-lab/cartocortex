@@ -66,9 +66,22 @@ export async function readPath(path: string): Promise<Opened> {
   return { name: baseName(path), path, bytes: await readFile(path) };
 }
 
+type Fs = { writeFile(p: string, b: Uint8Array): Promise<void>; rename(a: string, b: string): Promise<void>; remove(p: string): Promise<void> };
+
+/** Writes next to the target and renames over it, so a crash mid-write cannot leave a truncated file. If the sibling cannot be written or renamed (permissions), falls back to writing the target directly. */
+export async function writeSafely(path: string, bytes: Uint8Array, fs: Fs) {
+  const tmp = `${path}.tmp`;
+  try {
+    await fs.writeFile(tmp, bytes);
+    await fs.rename(tmp, path);
+  } catch {
+    await fs.remove(tmp).catch(() => {});
+    await fs.writeFile(path, bytes);
+  }
+}
+
 export async function writePath(path: string, bytes: Uint8Array) {
-  const { writeFile } = await import("@tauri-apps/plugin-fs");
-  await writeFile(path, bytes);
+  await writeSafely(path, bytes, await import("@tauri-apps/plugin-fs"));
 }
 
 /** The system "open" dialog (desktop app) or a file input (browser). */

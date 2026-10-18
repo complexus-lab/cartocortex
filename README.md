@@ -1,12 +1,14 @@
 # Cartocortex
 
+A [Complexus Lab](https://github.com/complexus-lab) project. See [CONTRIBUTING.md](CONTRIBUTING.md) to help.
+
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
 Tabs and menus: the toolbar is three menus (File with templates, recent files and export; Insert; View with structure, theme and panels) plus Undo, Redo, Delete, Find and Save. Each map opens in its own tab (a blank tab is reused; Open… puts a map in a new tab when the current one holds a file or unsaved work); the second row of tabs is the sheets inside one map. Only the first tab keeps the autosave.
 
 ## Download
 
-Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The builds are not code-signed: on macOS, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open; on Windows choose More info, then Run anyway.
+Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The Windows and Linux builds are not code-signed (on Windows choose More info, then Run anyway). The macOS build is signed and notarized when the release was made with the Apple credentials; otherwise, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open. How releases are made: [RELEASING.md](RELEASING.md).
 
 ## Run
 
@@ -44,15 +46,15 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Direction variants of XMind structures (up-pointing org chart, left-hand tree), which open as the nearest structure; floating topics, relationships and styles from imported XMind 8 files.
+Tree tables and the unbalanced map, which open as the nearest structure; XMind's smileys, arrows, font sizes and line styles. An import lists what it could not keep.
 
 ## Added
 
-Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding and structure only).
+Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding, structure, pictures, relationships, summaries, floating topics, boundaries, icons, fills).
 
 Outline view (toolbar "Outline": Enter = sibling, Tab / Shift+Tab = indent / outdent, shares undo with the map) and PNG / PDF export (the PDF is one page holding an image of the map, so its text isn't selectable).
 
-Summaries: select a topic, click "Summary", then click the last topic of the range (it must share a parent). A bracket and an editable label (double-click) appear beside the span; click the label and press Delete to remove it. They are included in PNG/PDF export but not in `.xmind` export.
+Summaries: select a topic, click "Summary", then click the last topic of the range (it must share a parent). A bracket and an editable label (double-click) appear beside the span; click the label and press Delete to remove it. They are included in PNG/PDF and `.xmind` export.
 
 Presentation: "Present" goes full-screen and reveals one top-level branch per step (→ / Space / Enter next, ← back, Esc exit); earlier branches dim.
 
@@ -102,6 +104,8 @@ MIT, see [LICENSE](LICENSE).
 Outline formats: Open reads Markdown (`.md`, headings and nested lists; `- [x]` task boxes become 100% progress, the first link becomes the topic's link) and OPML (`.opml`, with notes, links and checked items). "Export OPML" writes one top-level outline per sheet, and Save as can write `.opml`, `.md`, `.xmind` or FreeMind `.mm` as well as `.json`.
 
 FreeMind / Freeplane: Open reads FreeMind's `.mm` maps (plain or gzipped) — topics, notes, links, links between topics, folding, fill and text colours, bold / italic, priority and progress icons — and left-side topics open as a one-sided or two-sided map. "Export FreeMind" (and Save as `.mm`) writes one root node per sheet, so extra sheets may not show in FreeMind itself; multi-line texts keep their lines, but pictures, relationships, summaries, per-word style, floating positions and structures beyond the sideways layouts are not carried.
+
+Zip-based files (`.xmind`) are refused if they would unpack to more than 64 MB, whatever size they claim, so a booby-trapped map cannot exhaust memory.
 
 Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml`, FreeMind or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
 

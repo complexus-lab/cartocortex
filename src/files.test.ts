@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { bookJson, parseBook } from "./book";
-import { baseName, docBytes, extOf, loadRecent, parseDoc, pushRecent, saveRecent } from "./files";
+import { baseName, docBytes, extOf, loadRecent, parseDoc, pushRecent, saveRecent, writeSafely } from "./files";
 import { mk } from "./model";
 
 test("path helpers", () => {
@@ -55,4 +55,36 @@ test("the recent list survives junk in storage", () => {
   expect(loadRecent()).toEqual([]);
   store.set("cartocortex.recent", JSON.stringify(["ok", 3, null, "fine"]));
   expect(loadRecent()).toEqual(["ok", "fine"]);
+});
+
+const fakeFs = (failOn: "none" | "tmp" | "rename") => {
+  const files = new Map<string, string>([["/d/a.json", "old"]]);
+  const dec = (b: Uint8Array) => new TextDecoder().decode(b);
+  return {
+    files,
+    writeFile: async (p: string, b: Uint8Array) => {
+      if (failOn === "tmp" && p.endsWith(".tmp")) throw new Error("denied");
+      files.set(p, dec(b));
+    },
+    rename: async (a: string, b: string) => {
+      if (failOn === "rename") throw new Error("denied");
+      files.set(b, files.get(a)!);
+      files.delete(a);
+    },
+    remove: async (p: string) => void files.delete(p),
+  };
+};
+
+test("writeSafely goes through a temp file and leaves no trace", async () => {
+  const fs = fakeFs("none");
+  await writeSafely("/d/a.json", new TextEncoder().encode("new"), fs);
+  expect([...fs.files]).toEqual([["/d/a.json", "new"]]);
+});
+
+test("writeSafely falls back to a direct write when the sibling is not allowed", async () => {
+  for (const failOn of ["tmp", "rename"] as const) {
+    const fs = fakeFs(failOn);
+    await writeSafely("/d/a.json", new TextEncoder().encode("new"), fs);
+    expect([...fs.files]).toEqual([["/d/a.json", "new"]]);
+  }
 });

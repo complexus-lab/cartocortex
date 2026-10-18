@@ -1,5 +1,3 @@
-import { XM_PROGRESS } from "./task";
-
 // What an import could not carry over, counted per kind so the user sees it instead of finding it missing later.
 
 export class Report {
@@ -14,6 +12,3 @@ export class Report {
     return [...this.seen].map(([what, n]) => (n > 1 ? `${n} × ${what}` : what));
   }
 }
-
-/** Marker ids that become a priority or a progress; every other marker (flags, symbols, smileys…) is lost. */
-export const isKnownMarker = (id: string) => /^priority-\d$/.test(id) || id in XM_PROGRESS;

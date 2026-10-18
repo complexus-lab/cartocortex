@@ -24,7 +24,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
+  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "matrix-row" | "vline" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
   themeColors?: string[]; // the "custom" theme: central topic and accent, then six branch colours (#rrggbb)
   title?: string; // sheet name (tab label); falls back to the central topic text
@@ -37,9 +37,45 @@ export type Box = {
   parent?: string; depth: number;
   side: 1 | -1; // which side of the root the node grows towards
   branch: number; // index of the top-level ancestor (-1 for the root)
-  flow: "right" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
+  flow: "right" | "down" | "tree" | "fish" | "line" | "vline" | "rmatrix" | "brace" | "matrix"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
   anchor?: { x: number; y: number }; // fishbone and timeline: where this topic's connector starts or meets the line
+  flip?: Flip; // the structure is a mirror image of its base (org chart up, tree left…): the box is already mirrored, `unflip` gives the base geometry
 };
+
+export type Flip = { h?: boolean; v?: boolean }; // mirrored left-right and/or top-bottom, about the central topic's origin
+
+/** Structures drawn as the mirror image of another: the base layout and the mirror axes. */
+const VARIANTS: Partial<Record<NonNullable<Node["layout"]>, [NonNullable<Node["layout"]>, Flip]>> = {
+  up: ["down", { v: true }],
+  "tree-left": ["tree", { h: true }],
+  "brace-left": ["brace", { h: true }],
+  "fish-left": ["fish", { h: true }],
+  "map-ccw": ["map", { h: true }],
+};
+
+/** The box in its base structure's own coordinates, before mirroring. */
+export const unflip = (b: Box): Box => {
+  const f = b.flip;
+  if (!f) return b;
+  const { flip: _flip, ...rest } = b;
+  return {
+    ...rest,
+    x: f.h ? -(b.x + b.w) : b.x,
+    y: f.v ? -(b.y + b.h) : b.y,
+    side: f.h ? (-b.side as 1 | -1) : b.side,
+    ...(b.anchor ? { anchor: { x: f.h ? -b.anchor.x : b.anchor.x, y: f.v ? -b.anchor.y : b.anchor.y } } : {}),
+  };
+};
+
+/** Mirror an absolute SVG path (M L C Q H V, as the connector code writes them) the same way. */
+export function mirrorPath(d: string, f?: Flip) {
+  if (!f) return d;
+  return d.replace(/([MLCQHV])([^MLCQHV]*)/g, (_, c: string, args: string) => {
+    const nums = (args.match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
+    const out = nums.map((n, i) => (c === "H" || (c !== "V" && i % 2 === 0) ? (f.h ? -n : n) : f.v ? -n : n));
+    return c + out.join(" ");
+  });
+}
 
 export const mk = (text = ""): Node => ({ id: crypto.randomUUID(), text, children: [] });
 
@@ -221,7 +257,77 @@ function fishbone(root: Node): Raw[] {
   return out;
 }
 
+const VT = { GAP: 40 };
+
+/**
+ * Vertical timeline: the root heads a vertical line and the top-level topics sit on it, in order, alternating right and left of the line.
+ * Each topic's descendants grow outward from it as a tidy tree. Every box carries its side; a topic's `anchor` is where its stretch of line starts.
+ */
+function vtimeline(root: Node): (Raw & { side: 1 | -1 })[] {
+  const rw = widthOf(root), spine = rw / 2;
+  const out: (Raw & { side: 1 | -1 })[] = [{ id: root.id, x: 0, y: 0, w: rw, h: H, depth: 0, side: 1 }];
+  const free = { 1: H + VT.GAP, [-1]: H + VT.GAP }; // first free y on each side of the line
+  let prev = H; // where the previous stretch of line ended: the bottom of the root, then the previous topic's centre
+  (root.collapsed ? [] : root.children).forEach((label, k) => {
+    const side = k % 2 === 0 ? 1 : -1, tree = half(label);
+    const top = Math.min(...tree.map((b) => b.y)), bottom = Math.max(...tree.map((b) => b.y + b.h)), cy = tree[0].y + H / 2;
+    const y = Math.max(free[side] + (cy - top), k === 0 ? H + VT.GAP + H / 2 : prev + H + GAP_Y); // the topic's centre on the line
+    const dy = y - cy;
+    for (const b of tree) {
+      const x = side === 1 ? spine + VT.GAP + b.x : spine - VT.GAP - b.x - b.w;
+      out.push({ ...b, x, y: b.y + dy, side, depth: b.depth + 1, ...(b === tree[0] ? { parent: root.id, anchor: { x: spine, y: prev } } : {}) });
+    }
+    free[side] = bottom + dy + GAP_Y;
+    prev = y;
+  });
+  return out;
+}
+
 const TL = { GAP: 36, ROW: 14, NEST: 24 };
+
+const RM = { GAP: 28 };
+
+/**
+ * Row matrix: the root heads a vertical line and each top-level topic is a row header on it. Its children are the cells of the row,
+ * side by side, and each cell's descendants stack beneath it. Anchors: a header's marks where its stretch of the line starts,
+ * a cell's where the previous cell (or the header) ends.
+ */
+function rowmatrix(root: Node): Raw[] {
+  const rowH = H + GAP_Y;
+  const out: Raw[] = [{ id: root.id, x: 0, y: 0, w: widthOf(root), h: H, depth: 0 }];
+  let top = H + RM.GAP, prev = H; // top of the next row; where the previous stretch of the line ended
+  (root.collapsed ? [] : root.children).forEach((label) => {
+    const lw = widthOf(label);
+    const head: Raw = { id: label.id, x: RM.GAP, y: top, w: lw, h: H, parent: root.id, depth: 1, anchor: { x: RM.GAP / 2, y: prev } };
+    out.push(head);
+    let bottom = top + H, cursor = RM.GAP + lw + RM.GAP, prevRight = RM.GAP + lw;
+    (label.collapsed ? [] : label.children).forEach((cell) => {
+      const cw = widthOf(cell);
+      const box: Raw = { id: cell.id, x: cursor, y: top, w: cw, h: H, parent: label.id, depth: 2, anchor: { x: prevRight, y: top + H / 2 } };
+      out.push(box);
+      const at = new Map<string, Raw>([[cell.id, box]]);
+      let right = cursor + cw, j = 0;
+      const walk = (n: Node, d: number) => {
+        if (n.collapsed) return;
+        for (const c of n.children) {
+          const w = widthOf(c), x = at.get(n.id)!.x + TL.NEST;
+          const b: Raw = { id: c.id, x, y: top + H + TL.ROW + j++ * rowH, w, h: H, parent: n.id, depth: d + 1 };
+          out.push(b);
+          at.set(c.id, b);
+          right = Math.max(right, x + w);
+          bottom = Math.max(bottom, b.y + H);
+          walk(c, d + 1);
+        }
+      };
+      walk(cell, 2);
+      prevRight = cursor + cw;
+      cursor = right + RM.GAP;
+    });
+    prev = top + H / 2;
+    top = bottom + RM.GAP;
+  });
+  return out;
+}
 
 /**
  * Timeline: the root starts a horizontal line and the top-level topics sit on it, in order. Each topic's
@@ -264,17 +370,20 @@ function timeline(root: Node, alternate = true): Raw[] {
  * "down": org chart. "tree": indented tree chart. "fish": fishbone. "line": timeline.
  */
 export function layout(root: Node): Box[] {
+  const [base, flip] = VARIANTS[root.layout ?? "right"] ?? [root.layout ?? "right", undefined];
   const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
-  const flows: Record<string, Box["flow"]> = { down: "down", tree: "tree", fish: "fish", line: "line", matrix: "matrix", brace: "brace" };
-  const flow = flows[root.layout ?? ""] ?? "right";
+  const flows: Record<string, Box["flow"]> = { down: "down", tree: "tree", fish: "fish", line: "line", vline: "vline", matrix: "matrix", "matrix-row": "rmatrix", brace: "brace" };
+  const flow = flows[base] ?? "right";
   const out: Box[] = [];
 
-  if (flow !== "right" && flow !== "brace") {
-    const raw = { down: vertical, tree: indented, fish: fishbone, line: timeline, matrix: (r: Node) => timeline(r, false) }[flow]({ ...root, children: kids });
+  if (flow === "vline") {
+    out.push(...vtimeline({ ...root, children: kids }).map((b): Box => ({ ...b, branch: -1, flow })));
+  } else if (flow !== "right" && flow !== "brace") {
+    const raw = { down: vertical, tree: indented, fish: fishbone, line: timeline, matrix: (r: Node) => timeline(r, false), rmatrix: rowmatrix }[flow]({ ...root, children: kids });
     out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
   } else {
     // Sideways structures share one geometry: "right" and "brace" grow right, "left" grows left, "map" splits both ways.
-    const cut = root.collapsed ? kids.length : root.layout === "map" ? Math.ceil(kids.length / 2) : root.layout === "left" ? 0 : kids.length;
+    const cut = root.collapsed ? kids.length : base === "map" ? Math.ceil(kids.length / 2) : base === "left" ? 0 : kids.length;
     const right = half({ ...root, children: kids.slice(0, cut) });
     out.push(...right.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
 
@@ -283,6 +392,20 @@ export function layout(root: Node): Box[] {
       const dy = right[0].y - left[0].y; // line the two roots up
       const rw = right[0].w;
       for (const b of left.slice(1)) out.push({ ...b, x: rw - b.x - b.w, y: b.y + dy, side: -1, branch: -1, flow });
+    }
+  }
+
+  if (flip) {
+    // The mirror image of the base structure; floating topics below keep their own absolute positions.
+    for (const [i, b] of out.entries()) {
+      out[i] = {
+        ...b,
+        x: flip.h ? -(b.x + b.w) : b.x,
+        y: flip.v ? -(b.y + b.h) : b.y,
+        side: flip.h ? (-b.side as 1 | -1) : b.side,
+        ...(b.anchor ? { anchor: { x: flip.h ? -b.anchor.x : b.anchor.x, y: flip.v ? -b.anchor.y : b.anchor.y } } : {}),
+        flip,
+      };
     }
   }
 
@@ -308,7 +431,36 @@ export const toMarkdown = (n: Node, depth = 0): string =>
 /** Arrow-key navigation over the visible layout. */
 export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "right" | "up" | "down"): string {
   const me = boxes.find((b) => b.id === id)!;
+  // Down, tree and fishbone arrows follow the structure itself (parent, first child), so a mirrored one swaps them.
+  if (me.flip && (me.flow === "down" || me.flow === "tree" || me.flow === "fish")) {
+    const swap = { left: "right", right: "left", up: "down", down: "up" } as const;
+    if ((me.flip.h && (dir === "left" || dir === "right")) || (me.flip.v && (dir === "up" || dir === "down"))) dir = swap[dir];
+  }
   const firstKid = () => (findNode(root, id)!.collapsed ? undefined : findNode(root, id)!.children.find((c) => !c.float))?.id ?? id;
+  if (me.flow === "vline" && me.depth <= 1 && (dir === "up" || dir === "down")) {
+    const stops = boxes.filter((b) => b.flow === "vline" && b.depth <= 1).sort((a, b) => a.y - b.y); // the head, then the topics down the line
+    return (stops[stops.findIndex((b) => b.id === id) + (dir === "down" ? 1 : -1)] ?? me).id;
+  }
+  if (me.flow === "rmatrix") {
+    const rows = boxes.filter((b) => b.flow === "rmatrix" && b.depth === 1).sort((a, b) => a.y - b.y);
+    if (me.depth === 0) return dir === "down" || dir === "right" ? (rows[0]?.id ?? id) : id;
+    if (me.depth === 1) {
+      if (dir === "left") return me.parent ?? id;
+      if (dir === "right") return firstKid();
+      const next = dir === "down" ? rows[rows.findIndex((b) => b.id === id) + 1] : rows[rows.findIndex((b) => b.id === id) - 1] ?? boxes[0];
+      return (next ?? me).id;
+    }
+    if (me.depth === 2) {
+      const cells = findNode(root, me.parent!)!.children, i = cells.findIndex((c) => c.id === id);
+      if (dir === "left") return (cells[i - 1] ?? findNode(root, me.parent!)!).id;
+      if (dir === "right") return (cells[i + 1] ?? cells[i]).id;
+      return dir === "down" ? firstKid() : id;
+    }
+    const order = boxes.filter((b) => b.flow === "rmatrix"); // document order: a cell's stack follows the cell
+    if (dir === "left" || dir === "up") return me.parent ?? id;
+    const next = order[order.findIndex((b) => b.id === id) + 1];
+    return dir === "down" && next && next.depth >= 3 ? next.id : id;
+  }
   if (me.flow === "down") {
     if (dir === "up") return me.parent ?? id;
     if (dir === "down") return firstKid();
