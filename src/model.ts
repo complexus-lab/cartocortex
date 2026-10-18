@@ -24,7 +24,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "matrix-row" | "vline" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
+  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "matrix-row" | "vline" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // the structure of the sheet (on its root) or of this topic's own branch (see SUB_STRUCTURES): logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
   themeColors?: string[]; // the "custom" theme: central topic and accent, then six branch colours (#rrggbb)
   title?: string; // sheet name (tab label); falls back to the central topic text
@@ -122,10 +122,10 @@ export function moveTo(root: Node, id: string, target: string): Node {
   return addChild(remove(root, id), target, attached);
 }
 
-/** Deep copy with fresh ids; document-level settings are not copied. */
+/** Deep copy with fresh ids; document-level settings are not copied (a topic's own structure is). */
 export const clone = (n: Node): Node => {
-  const { rels, bounds, summaries, layout, theme, themeColors, title, float, ...rest } = n;
-  void rels, bounds, summaries, layout, theme, themeColors, title, float;
+  const { rels, bounds, summaries, theme, themeColors, title, float, ...rest } = n;
+  void rels, bounds, summaries, theme, themeColors, title, float;
   return { ...rest, id: crypto.randomUUID(), children: n.children.map(clone) };
 };
 
@@ -136,14 +136,18 @@ const H = 34, GAP_X = 56, GAP_Y = 12;
 export const widthOf = (n: Node) =>
   Math.max(56, [...n.text].length * (n.bold ? 9.2 : 8.5) + 28 + (n.icon ? 22 : 0) + (validImage(n.image) ? thumbW(n.image) + 6 : 0) + (n.priority ? 24 : 0) + (n.progress != null ? 24 : 0) + (n.note ? 20 : 0) + (n.link ? 20 : 0));
 
-type Raw = Omit<Box, "side" | "branch" | "flow">;
+type Raw = Omit<Box, "side" | "branch" | "flow"> & { flow?: Box["flow"]; side?: 1 | -1 }; // a box inside a topic's own structure brings its own flow and side
+
+/** Structures a topic can give its own branch inside a sideways sheet (logic chart or map), as XMind allows. */
+export const SUB_STRUCTURES = ["down", "up", "tree", "tree-left"] as const;
+const ownStructure = (n: Node) => !n.collapsed && n.children.length > 0 && (SUB_STRUCTURES as readonly string[]).includes(n.layout ?? "");
 
 /** Tidy right-growing tree: leaves take consecutive rows, parents centre on their children. */
-function half(root: Node): Raw[] {
+function half(root: Node, own = false): Raw[] {
   const widths: number[] = [];
   const walk = (n: Node, d: number) => {
     widths[d] = Math.max(widths[d] ?? 0, widthOf(n));
-    if (!n.collapsed) n.children.forEach((c) => walk(c, d + 1));
+    if (!n.collapsed && !(own && d > 0 && ownStructure(n))) n.children.forEach((c) => walk(c, d + 1));
   };
   walk(root, 0);
   const colX = widths.reduce<number[]>((a, _, i) => [...a, i ? a[i - 1] + widths[i - 1] + GAP_X : 0], []);
@@ -151,6 +155,7 @@ function half(root: Node): Raw[] {
   const out: Raw[] = [];
   let row = 0;
   const place = (n: Node, d: number, parent?: string): number => {
+    if (own && d > 0 && ownStructure(n)) return placeBlock(n, d, parent);
     const kids = n.collapsed ? [] : n.children;
     const slot = out.length;
     out.push(null as unknown as Raw); // reserve so parents precede children
@@ -162,6 +167,20 @@ function half(root: Node): Raw[] {
     }
     out[slot] = { id: n.id, x: colX[d], y: cy - H / 2, w: widthOf(n), h: H, parent, depth: d };
     return cy;
+  };
+  /** A topic with its own structure takes a block of rows: its branch is laid out on its own, then moved next to the topic. */
+  const placeBlock = (n: Node, d: number, parent?: string): number => {
+    const sub = layout(n), r = sub[0];
+    const minX = Math.min(...sub.map((b) => b.x - r.x)), minY = Math.min(...sub.map((b) => b.y)), maxY = Math.max(...sub.map((b) => b.y + b.h));
+    const rows = Math.max(1, Math.ceil((maxY - minY + GAP_Y) / (H + GAP_Y)));
+    const top = row * (H + GAP_Y);
+    row += rows;
+    const x = colX[d] + Math.max(0, -minX), y = top + (r.y - minY), dx = x - r.x, dy = y - r.y; // keep the branch clear of the column before it
+    out.push({ id: n.id, x, y, w: r.w, h: H, parent, depth: d });
+    for (const b of sub.slice(1)) {
+      out.push({ ...b, x: b.x + dx, y: b.y + dy, depth: b.depth + d, ...(b.anchor ? { anchor: { x: b.anchor.x + dx, y: b.anchor.y + dy } } : {}) });
+    }
+    return y + H / 2;
   };
   place(root, 0);
   return out;
@@ -384,14 +403,23 @@ export function layout(root: Node): Box[] {
   } else {
     // Sideways structures share one geometry: "right" and "brace" grow right, "left" grows left, "map" splits both ways.
     const cut = root.collapsed ? kids.length : base === "map" ? Math.ceil(kids.length / 2) : base === "left" ? 0 : kids.length;
-    const right = half({ ...root, children: kids.slice(0, cut) });
-    out.push(...right.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
+    const own = base === "right" || base === "left" || base === "map"; // only these hold topics with a structure of their own
+    const right = half({ ...root, children: kids.slice(0, cut) }, own);
+    out.push(...right.map((b): Box => ({ side: 1, flow, ...b, branch: -1 })));
 
     if (cut < kids.length) {
-      const left = half({ ...root, collapsed: false, children: kids.slice(cut) });
+      const left = half({ ...root, collapsed: false, children: kids.slice(cut) }, own);
       const dy = right[0].y - left[0].y; // line the two roots up
       const rw = right[0].w;
-      for (const b of left.slice(1)) out.push({ ...b, x: rw - b.x - b.w, y: b.y + dy, side: -1, branch: -1, flow });
+      for (const b of left.slice(1)) {
+        // A box that brings its own structure is mirrored with the rest, so it records the mirroring on its flip.
+        const inner = b.flow !== undefined;
+        out.push({
+          ...b, x: rw - b.x - b.w, y: b.y + dy, side: inner ? (-(b.side ?? 1) as 1 | -1) : -1, branch: -1, flow: b.flow ?? flow,
+          ...(b.anchor ? { anchor: { x: rw - b.anchor.x, y: b.anchor.y + dy } } : {}),
+          ...(inner ? { flip: { ...b.flip, h: !b.flip?.h } } : {}),
+        });
+      }
     }
   }
 
@@ -410,9 +438,9 @@ export function layout(root: Node): Box[] {
   }
 
   for (const f of root.children.filter((c) => c.float)) {
-    const raw = half(f);
+    const raw = half(f, base === "right" || base === "left" || base === "map");
     const dx = f.float!.x - raw[0].x, dy = f.float!.y - raw[0].y;
-    for (const b of raw) out.push({ ...b, x: b.x + dx, y: b.y + dy, depth: b.depth + 1, side: 1, branch: -1, flow: "right" });
+    for (const b of raw) out.push({ side: 1, flow: "right", ...b, x: b.x + dx, y: b.y + dy, depth: b.depth + 1, branch: -1, ...(b.anchor ? { anchor: { x: b.anchor.x + dx, y: b.anchor.y + dy } } : {}) });
   }
 
   // Branch index = position among all top-level topics, which also drives colours and presentation steps.
@@ -431,6 +459,12 @@ export const toMarkdown = (n: Node, depth = 0): string =>
 /** Arrow-key navigation over the visible layout. */
 export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "right" | "up" | "down"): string {
   const me = boxes.find((b) => b.id === id)!;
+  // A topic whose branch has a structure of its own opens it with the arrow that points into that structure.
+  const kid = boxes.find((b) => b.parent === id);
+  if (kid && kid.flow !== me.flow && !findNode(root, id)!.collapsed) {
+    const into = kid.flow === "down" ? (kid.flip?.v ? "up" : "down") : kid.flip?.h ? "left" : "right";
+    if (dir === into) return kid.id;
+  }
   // Down, tree and fishbone arrows follow the structure itself (parent, first child), so a mirrored one swaps them.
   if (me.flip && (me.flow === "down" || me.flow === "tree" || me.flow === "fish")) {
     const swap = { left: "right", right: "left", up: "down", down: "up" } as const;

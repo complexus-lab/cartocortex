@@ -46,7 +46,7 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Tree tables and the unbalanced map, which open as the nearest structure; XMind's smileys, arrows, font sizes and line styles. An import lists what it could not keep.
+Tree tables and the unbalanced map, which open as the nearest structure (a branch's own structure is kept only for org charts and tree charts inside a logic chart or map); XMind's smileys, arrows, font sizes and line styles. An import lists what it could not keep.
 
 ## Added
 
@@ -114,3 +114,5 @@ Links between topics: in the panel, "Link to a topic" → "Pick a topic…", the
 Pictures: the panel's "Picture" section puts an image (PNG, JPEG, GIF or WebP) on the selected topic, shown as a small thumbnail in the topic; click the thumbnail for the full image (Esc or a click closes it). The picture is downscaled to at most 800 px and stored inside the map file, so keep an eye on size (the autosave in the app's own storage has a few-megabyte limit). Pictures appear in PNG / PDF export but not in `.xmind`, OPML or Markdown. Only embedded raster images are ever drawn: SVG and web addresses in a map file are ignored.
 
 Templates: the "Template…" menu next to New starts a map from one of eight starters (brainstorm, project plan as a timeline, SWOT as a matrix, cause and effect as a fishbone, meeting notes as a tree, org chart, weekly plan, pros and cons as a brace map). Like New, it asks before discarding unsaved changes.
+
+Branch structure: select a topic that has children in a logic chart or map and pick *Same*, *Org chart ↓/↑* or *Tree →/←* in the panel to draw that branch with its own structure, as XMind allows; it round-trips through `.xmind`.

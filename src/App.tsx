@@ -921,6 +921,17 @@ export default function App({ active, primary, tabId, restored, openPath, onMeta
                 <button key={id} className={(selNode.shape ?? "round") === id ? "on" : ""} onClick={() => setNode({ shape: id })}>{label}</button>
               ))}
             </div>
+            {["right", "left", "map", undefined].includes(s.root.layout) && selNode.id !== s.root.id && selNode.children.length > 0 && (
+              <>
+                <label>Branch structure</label>
+                <div className="row">
+                  <button className={!selNode.layout ? "on" : ""} title="Draw this branch like the rest of the map" onClick={() => setNode({ layout: undefined })}>Same</button>
+                  {([["down", "Org chart ↓"], ["up", "Org chart ↑"], ["tree", "Tree →"], ["tree-left", "Tree ←"]] as const).map(([id, label]) => (
+                    <button key={id} className={selNode.layout === id ? "on" : ""} onClick={() => setNode({ layout: id })}>{label}</button>
+                  ))}
+                </div>
+              </>
+            )}
             <label>Marker</label>
             <div className="row">
               {ICONS.map((i) => (
