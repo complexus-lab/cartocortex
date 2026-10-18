@@ -79,15 +79,17 @@ export function parseXml(src: string): XNode {
 const kid = (n: XNode, name: string) => n.children.find((c) => c.name === name);
 const allText = (n: XNode): string => n.text.trim() || n.children.map(allText).filter(Boolean).join("\n");
 
-/** Logic, map, org chart, tree chart and fishbone; anything else (matrix, timeline…) stays the default logic chart. */
+/** The structure for an XMind structure class, or undefined for the default logic chart. Variants the editor lacks open as the nearest one. */
 export function layoutOf(structureClass: string): Node["layout"] | undefined {
   if (structureClass.includes("logic.left")) return "left";
-  if (structureClass.includes("brace")) return "brace"; // brace.left opens as the right-hand brace
+  if (structureClass.includes("brace")) return structureClass.includes("brace.left") ? "brace-left" : "brace";
   if (structureClass.includes("spreadsheet")) return "matrix"; // XMind's matrix, row or column
-  if (structureClass.includes("fishbone")) return "fish";
+  if (structureClass.includes("fishbone")) return structureClass.includes("leftHeaded") ? "fish-left" : "fish";
   if (structureClass.includes("timeline")) return "line"; // every timeline variant opens as the horizontal one
-  if (structureClass.includes("org-chart")) return "down";
-  if (structureClass.includes("tree")) return "tree";
+  if (structureClass.includes("org-chart")) return structureClass.includes("org-chart.up") ? "up" : "down";
+  if (structureClass.includes("treetable")) return "tree"; // a table with tree rows: nearest is the indented tree
+  if (structureClass.includes("tree")) return structureClass.includes("tree.left") ? "tree-left" : "tree";
+  if (structureClass.includes("map.anticlockwise")) return "map-ccw";
   if (structureClass.includes("map")) return "map";
   return undefined;
 }
@@ -97,6 +99,8 @@ const EXACT: Record<string, string> = {
   "org.xmind.ui.logic.right": "right", "org.xmind.ui.logic.left": "left", "org.xmind.ui.map.clockwise": "map",
   "org.xmind.ui.org-chart.down": "down", "org.xmind.ui.tree.right": "tree", "org.xmind.ui.fishbone.rightHeaded": "fish",
   "org.xmind.ui.timeline.horizontal": "line", "org.xmind.ui.brace.right": "brace", "org.xmind.ui.spreadsheet.column": "matrix",
+  "org.xmind.ui.org-chart.up": "up", "org.xmind.ui.tree.left": "tree-left", "org.xmind.ui.brace.left": "brace-left",
+  "org.xmind.ui.fishbone.leftHeaded": "fish-left", "org.xmind.ui.map.anticlockwise": "map-ccw",
 };
 
 /** Records a structure XMind uses that opens as the nearest one here. An absent class is XMind's default and loses nothing. */

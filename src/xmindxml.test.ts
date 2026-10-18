@@ -54,7 +54,7 @@ test("sheetsFromXml maps an XMind 8 document", () => {
 
 test("layoutOf", () => {
   expect(["org.xmind.ui.fishbone.leftHeaded", "org.xmind.ui.org-chart.down", "org.xmind.ui.tree.right", "org.xmind.ui.map.clockwise", "org.xmind.ui.logic.right", "org.xmind.ui.matrix", "org.xmind.ui.timeline.vertical"].map(layoutOf))
-    .toEqual(["fish", "down", "tree", "map", undefined, undefined, "line"]);
+    .toEqual(["fish-left", "down", "tree", "map", undefined, undefined, "line"]);
 });
 
 test("a zip with only content.xml opens; content.json wins when both exist", async () => {
@@ -70,7 +70,7 @@ test("layoutOf covers the remaining XMind structure classes", () => {
   const cases: Record<string, ReturnType<typeof layoutOf>> = {
     "org.xmind.ui.logic.left": "left",
     "org.xmind.ui.brace.right": "brace",
-    "org.xmind.ui.brace.left": "brace",
+    "org.xmind.ui.brace.left": "brace-left",
     "org.xmind.ui.spreadsheet.column": "matrix",
     "org.xmind.ui.structure.spreadsheet.row": "matrix",
     "org.xmind.ui.treetable.toptitle": "tree", // nearest match

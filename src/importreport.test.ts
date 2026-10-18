@@ -13,7 +13,7 @@ const json = (rootTopic: object, extra: object = {}) => zip({ "content.json": JS
 test("JSON import lists what it drops", async () => {
   const bytes = json(
     {
-      id: "r", title: "root", structureClass: "org.xmind.ui.map.anticlockwise",
+      id: "r", title: "root", structureClass: "org.xmind.ui.map.unbalanced",
       markers: [{ markerId: "priority-1" }, { markerId: "flag-red" }, { markerId: "symbol-wrong" }],
       notes: { plain: { content: "n" }, html: { content: "<b>n</b>" } },
       style: { properties: { "fo:color": "#ff0000", "line-color": "#00ff00" } },
@@ -26,7 +26,7 @@ test("JSON import lists what it drops", async () => {
   const { roots, lost } = await importXmindReport(bytes);
   expect(roots[0].children.map((c) => c.text)).toEqual(["kid", "float"]); // the floating topic is kept
   expect(lost).toEqual(expect.arrayContaining([
-    "structure map.anticlockwise opened as map",
+    "structure map.unbalanced opened as map",
     "markers with no counterpart dropped",
     "rich-text notes flattened to plain text",
     "topic styles other than bold, italic, strike, text colour and fill dropped",

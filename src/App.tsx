@@ -630,7 +630,7 @@ export default function App({ active, primary, tabId, restored, openPath, onMeta
         ]} />
         <Menu label="View" items={[
           { heading: "Structure" },
-          ...([["right", "Logic (right)"], ["left", "Logic (left)"], ["map", "Map (both sides)"], ["down", "Org chart (down)"], ["tree", "Tree (indented)"], ["fish", "Fishbone"], ["line", "Timeline"], ["brace", "Brace"], ["matrix", "Matrix"]] as const).map(([v, l]) => ({
+          ...([["right", "Logic (right)"], ["left", "Logic (left)"], ["map", "Map (both sides)"], ["map-ccw", "Map (anticlockwise)"], ["down", "Org chart (down)"], ["up", "Org chart (up)"], ["tree", "Tree (right)"], ["tree-left", "Tree (left)"], ["fish", "Fishbone (head right)"], ["fish-left", "Fishbone (head left)"], ["line", "Timeline"], ["brace", "Brace (right)"], ["brace-left", "Brace (left)"], ["matrix", "Matrix"]] as const).map(([v, l]) => ({
             label: l, checked: (s.root.layout ?? "right") === v, on: () => setDocProp({ layout: v }),
           })),
           { heading: "Theme" },

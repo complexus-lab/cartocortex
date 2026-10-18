@@ -24,7 +24,7 @@ export type Node = {
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
   // Document-level settings, only meaningful on the root node.
-  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
+  layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
   themeColors?: string[]; // the "custom" theme: central topic and accent, then six branch colours (#rrggbb)
   title?: string; // sheet name (tab label); falls back to the central topic text
@@ -39,7 +39,43 @@ export type Box = {
   branch: number; // index of the top-level ancestor (-1 for the root)
   flow: "right" | "down" | "tree" | "fish" | "line" | "brace" | "matrix"; // how branches run: sideways, top-down (org chart), an indented list (tree chart), along a fishbone or a timeline
   anchor?: { x: number; y: number }; // fishbone and timeline: where this topic's connector starts or meets the line
+  flip?: Flip; // the structure is a mirror image of its base (org chart up, tree left…): the box is already mirrored, `unflip` gives the base geometry
 };
+
+export type Flip = { h?: boolean; v?: boolean }; // mirrored left-right and/or top-bottom, about the central topic's origin
+
+/** Structures drawn as the mirror image of another: the base layout and the mirror axes. */
+const VARIANTS: Partial<Record<NonNullable<Node["layout"]>, [NonNullable<Node["layout"]>, Flip]>> = {
+  up: ["down", { v: true }],
+  "tree-left": ["tree", { h: true }],
+  "brace-left": ["brace", { h: true }],
+  "fish-left": ["fish", { h: true }],
+  "map-ccw": ["map", { h: true }],
+};
+
+/** The box in its base structure's own coordinates, before mirroring. */
+export const unflip = (b: Box): Box => {
+  const f = b.flip;
+  if (!f) return b;
+  const { flip: _flip, ...rest } = b;
+  return {
+    ...rest,
+    x: f.h ? -(b.x + b.w) : b.x,
+    y: f.v ? -(b.y + b.h) : b.y,
+    side: f.h ? (-b.side as 1 | -1) : b.side,
+    ...(b.anchor ? { anchor: { x: f.h ? -b.anchor.x : b.anchor.x, y: f.v ? -b.anchor.y : b.anchor.y } } : {}),
+  };
+};
+
+/** Mirror an absolute SVG path (M L C Q H V, as the connector code writes them) the same way. */
+export function mirrorPath(d: string, f?: Flip) {
+  if (!f) return d;
+  return d.replace(/([MLCQHV])([^MLCQHV]*)/g, (_, c: string, args: string) => {
+    const nums = (args.match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
+    const out = nums.map((n, i) => (c === "H" || (c !== "V" && i % 2 === 0) ? (f.h ? -n : n) : f.v ? -n : n));
+    return c + out.join(" ");
+  });
+}
 
 export const mk = (text = ""): Node => ({ id: crypto.randomUUID(), text, children: [] });
 
@@ -264,9 +300,10 @@ function timeline(root: Node, alternate = true): Raw[] {
  * "down": org chart. "tree": indented tree chart. "fish": fishbone. "line": timeline.
  */
 export function layout(root: Node): Box[] {
+  const [base, flip] = VARIANTS[root.layout ?? "right"] ?? [root.layout ?? "right", undefined];
   const kids = root.children.filter((c) => !c.float); // floating topics are placed on their own below
   const flows: Record<string, Box["flow"]> = { down: "down", tree: "tree", fish: "fish", line: "line", matrix: "matrix", brace: "brace" };
-  const flow = flows[root.layout ?? ""] ?? "right";
+  const flow = flows[base] ?? "right";
   const out: Box[] = [];
 
   if (flow !== "right" && flow !== "brace") {
@@ -274,7 +311,7 @@ export function layout(root: Node): Box[] {
     out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
   } else {
     // Sideways structures share one geometry: "right" and "brace" grow right, "left" grows left, "map" splits both ways.
-    const cut = root.collapsed ? kids.length : root.layout === "map" ? Math.ceil(kids.length / 2) : root.layout === "left" ? 0 : kids.length;
+    const cut = root.collapsed ? kids.length : base === "map" ? Math.ceil(kids.length / 2) : base === "left" ? 0 : kids.length;
     const right = half({ ...root, children: kids.slice(0, cut) });
     out.push(...right.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
 
@@ -283,6 +320,20 @@ export function layout(root: Node): Box[] {
       const dy = right[0].y - left[0].y; // line the two roots up
       const rw = right[0].w;
       for (const b of left.slice(1)) out.push({ ...b, x: rw - b.x - b.w, y: b.y + dy, side: -1, branch: -1, flow });
+    }
+  }
+
+  if (flip) {
+    // The mirror image of the base structure; floating topics below keep their own absolute positions.
+    for (const [i, b] of out.entries()) {
+      out[i] = {
+        ...b,
+        x: flip.h ? -(b.x + b.w) : b.x,
+        y: flip.v ? -(b.y + b.h) : b.y,
+        side: flip.h ? (-b.side as 1 | -1) : b.side,
+        ...(b.anchor ? { anchor: { x: flip.h ? -b.anchor.x : b.anchor.x, y: flip.v ? -b.anchor.y : b.anchor.y } } : {}),
+        flip,
+      };
     }
   }
 
@@ -308,6 +359,11 @@ export const toMarkdown = (n: Node, depth = 0): string =>
 /** Arrow-key navigation over the visible layout. */
 export function neighbour(root: Node, boxes: Box[], id: string, dir: "left" | "right" | "up" | "down"): string {
   const me = boxes.find((b) => b.id === id)!;
+  // Down, tree and fishbone arrows follow the structure itself (parent, first child), so a mirrored one swaps them.
+  if (me.flip && (me.flow === "down" || me.flow === "tree" || me.flow === "fish")) {
+    const swap = { left: "right", right: "left", up: "down", down: "up" } as const;
+    if ((me.flip.h && (dir === "left" || dir === "right")) || (me.flip.v && (dir === "up" || dir === "down"))) dir = swap[dir];
+  }
   const firstKid = () => (findNode(root, id)!.collapsed ? undefined : findNode(root, id)!.children.find((c) => !c.float))?.id ?? id;
   if (me.flow === "down") {
     if (dir === "up") return me.parent ?? id;
