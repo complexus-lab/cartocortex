@@ -70,3 +70,22 @@ test("relationships, summaries and floating topics come across", async () => {
   expect(root.rels).toEqual([{ id: expect.any(String), from: a.id, to: c.id }]);
   expect(lost).toEqual(["summaries dropped", "relationships dropped"]); // the out-of-range summary and the dangling relationship
 });
+
+test("pictures are embedded from the zip's resources", async () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 32"><rect/></svg>';
+  const sheet = [{ id: "s", class: "sheet", title: "S", rootTopic: { id: "r", title: "root", children: { attached: [
+    { id: "a", title: "png", image: { src: "xap:resources/a.png", width: 200, height: 133.4 } },
+    { id: "b", title: "svg", image: { src: "xap:resources/b.svg" } },
+    { id: "c", title: "gone", image: { src: "xap:resources/missing.png", width: 10, height: 10 } },
+    { id: "d", title: "odd", image: { src: "xap:resources/d.bmp", width: 10, height: 10 } },
+    { id: "e", title: "big", image: { src: "xap:resources/e.jpg", width: 10, height: 10 } },
+  ] } } }];
+  const { roots, lost } = await importXmindReport(zip({
+    "content.json": JSON.stringify(sheet), "resources/a.png": "fakepng", "resources/b.svg": svg, "resources/d.bmp": "x", "resources/e.jpg": "z".repeat(600_000),
+  }));
+  const [a, b, c, d, e] = roots[0].children;
+  expect(a.image).toEqual({ src: `data:image/png;base64,${btoa("fakepng")}`, w: 200, h: 133 });
+  expect(b.image).toEqual({ src: `data:image/svg+xml;base64,${btoa(svg)}`, w: 64, h: 32 }); // sized by its viewBox
+  expect([c.image, d.image, e.image]).toEqual([undefined, undefined, undefined]);
+  expect(lost).toEqual(["2 × images dropped", "images too large to embed dropped"]);
+});
