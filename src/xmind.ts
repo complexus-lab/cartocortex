@@ -89,7 +89,8 @@ type XTopic = {
   style?: { id?: string; properties?: Record<string, string> };
   children?: { attached?: XTopic[]; detached?: XTopic[]; summary?: XTopic[] };
   position?: { x?: number; y?: number };
-  summaries?: { range?: string; topicId?: string }[]; boundaries?: unknown[]; labels?: unknown[]; image?: unknown;
+  image?: { src?: string; width?: number; height?: number };
+  summaries?: { range?: string; topicId?: string }[]; boundaries?: unknown[]; labels?: unknown[];
   notes?: { plain?: { content?: string }; html?: unknown };
 };
 
@@ -125,6 +126,37 @@ const toX = (n: Node, known: Set<string>): XTopic => ({
 
 const HANDLED_STYLE = new Set(["fo:font-weight", "fo:font-style", "fo:text-decoration", "fo:color"]);
 
+const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml" };
+const DATA_URL_BUDGET = 700_000; // the same ceiling a picture added in the editor is held to
+
+const base64 = (b: Uint8Array) => {
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+
+/** An SVG without width and height is sized by its viewBox, or a default. */
+const svgSize = (text: string) => {
+  const tag = /<svg\b[^>]*>/i.exec(text)?.[0] ?? "";
+  const num = (name: string) => Number(new RegExp(`\\s${name}\\s*=\\s*["']([\\d.]+)(?:px)?["']`, "i").exec(tag)?.[1]);
+  const vb = /viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(tag);
+  return { w: num("width") || Number(vb?.[1]) || 100, h: num("height") || Number(vb?.[2]) || 100 };
+};
+
+/** Looks a topic's picture up in the zip's resources and embeds it; undefined (and counted in the report) when it cannot be. */
+type Pictures = (t: XTopic) => Node["image"] | undefined;
+
+const picturesOf = (files: Map<string, Uint8Array>, rep: Report): Pictures => (t) => {
+  if (!t.image) return undefined;
+  const path = (t.image.src ?? "").replace(/^xap:/, ""), bytes = files.get(path), ext = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase() ?? "";
+  const mime = MIME[ext];
+  if (!bytes || !mime) return void rep.add("images dropped");
+  const src = `data:${mime};base64,${base64(bytes)}`;
+  if (src.length > DATA_URL_BUDGET) return void rep.add("images too large to embed dropped");
+  const size = ext === "svg" ? svgSize(dec.decode(bytes)) : { w: t.image.width, h: t.image.height };
+  return { src, w: Math.max(1, Math.round(size.w || 100)), h: Math.max(1, Math.round(size.h || 100)) };
+};
+
 /** Summaries found while reading topics; they live on the root of a sheet. */
 type Acc = Summary[];
 
@@ -134,11 +166,11 @@ const rangeOf = (r: string | undefined) => {
   return m ? ([Number(m[1]), Number(m[2])] as const) : null;
 };
 
-const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, isRoot = false): Node => {
-  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep, acc));
+const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: Pictures, isRoot = false): Node => {
+  const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep, acc, pic));
   // Floating topics hang off the central topic; elsewhere XMind has none and neither do we.
   const floating = t.children?.detached ?? [];
-  if (isRoot) children.push(...floating.map((f) => ({ ...fromX(f, ids, rep, acc), float: { x: f.position?.x ?? 0, y: f.position?.y ?? 0 } })));
+  if (isRoot) children.push(...floating.map((f) => ({ ...fromX(f, ids, rep, acc, pic), float: { x: f.position?.x ?? 0, y: f.position?.y ?? 0 } })));
   else rep.add("floating topics dropped", floating.length);
   for (const sm of t.summaries ?? []) {
     const r = rangeOf(sm.range), from = r && children[r[0]], to = r && children[r[1]];
@@ -151,7 +183,7 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, isRoo
   rep.add("markers other than priority and progress dropped", markerIds.filter((m) => !isKnownMarker(m)).length);
   rep.add("boundaries dropped", t.boundaries?.length ?? 0);
   rep.add("labels dropped", t.labels?.length ?? 0);
-  rep.add("images dropped", t.image ? 1 : 0);
+  const image = pic(t);
   rep.add("rich-text notes flattened to plain text", t.notes?.html ? 1 : 0);
   rep.add("topic styles other than bold, italic, strike and colour dropped", Object.keys(sp).some((k) => !HANDLED_STYLE.has(k)) ? 1 : 0);
   const color = hex(sp["fo:color"]?.slice(0, 7)); // XMind may append an alpha pair
@@ -166,6 +198,7 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, isRoo
     ...(sp["fo:font-style"] === "italic" ? { italic: true } : {}),
     ...(sp["fo:text-decoration"]?.includes("line-through") ? { strike: true } : {}),
     ...(color ? { textColor: color } : {}),
+    ...(image ? { image } : {}),
     ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
     ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
   };
@@ -221,12 +254,13 @@ export async function importXmindReport(bytes: Uint8Array): Promise<{ roots: Nod
     return { roots: sheetsFromXml(dec.decode(xml), rep), lost: rep.lines() };
   }
   const ids = new Map<string, string>();
+  const pictures = picturesOf(files, rep);
   const pendingRels: [Node, NonNullable<XSheet["relationships"]>][] = []; // resolved once every topic id is known
   const roots = (JSON.parse(dec.decode(content)) as XSheet[])
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
       const sums: Acc = [];
-      const root = fromX(sh.rootTopic!, ids, rep, sums, true);
+      const root = fromX(sh.rootTopic!, ids, rep, sums, pictures, true);
       if (sums.length) root.summaries = sums;
       pendingRels.push([root, sh.relationships ?? []]);
       const sc = sh.rootTopic!.structureClass ?? "";
