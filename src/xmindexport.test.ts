@@ -39,3 +39,17 @@ test("an unusable picture is left out instead of corrupting the file", async () 
   expect(roots[0].children.map((k) => k.image)).toEqual([undefined, undefined]);
   expect(lost).toEqual([]);
 });
+
+test("boundaries, icons and fills survive a round trip", async () => {
+  const [a, b] = [mk("A"), mk("B")];
+  const doc: Node = { ...mk("root"), icon: "⭐", color: "#ffeeac", children: [{ ...a, icon: "❗", color: "#0d9488" }, { ...b, icon: "💡" }], bounds: ["will-be-root", a.id, b.id] };
+  doc.bounds = [doc.id, a.id, b.id];
+  const { roots, lost } = await importXmindReport(exportXmind(doc));
+  const r = roots[0], [ra, rb] = r.children;
+  expect(r.icon).toBe("⭐");
+  expect(r.color).toBe("#ffeeac");
+  expect([ra.icon, ra.color]).toEqual(["❗", "#0d9488"]);
+  expect(rb.icon).toBeUndefined(); // 💡 has no XMind marker we can write
+  expect(r.bounds).toEqual([r.id, ra.id, rb.id]);
+  expect(lost).toEqual([]);
+});

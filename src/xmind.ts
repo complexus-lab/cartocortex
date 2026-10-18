@@ -1,8 +1,8 @@
 import { Node, Rel, Summary, parentOf } from "./model";
-import { fromMarkers, progressMarker } from "./task";
-import { layoutOf, noteStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
+import { MARKER_OF_ICON, fromMarkers, lostMarkers, progressMarker } from "./task";
+import { boundTopics, layoutOf, noteStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
-import { Report, isKnownMarker } from "./importreport";
+import { Report } from "./importreport";
 
 // .xmind = zip containing content.json (modern format, XMind 8+/Zen). Written uncompressed ("stored");
 // read accepts stored and deflate. Legacy XML-only files are not supported.
@@ -90,11 +90,12 @@ type XTopic = {
   children?: { attached?: XTopic[]; detached?: XTopic[]; summary?: XTopic[] };
   position?: { x?: number; y?: number };
   image?: { src?: string; width?: number; height?: number };
-  summaries?: { range?: string; topicId?: string }[]; boundaries?: unknown[]; labels?: unknown[];
+  summaries?: { range?: string; topicId?: string }[]; boundaries?: { id?: string; range?: string; title?: string }[]; labels?: unknown[];
   notes?: { plain?: { content?: string }; html?: unknown };
 };
 
 const markersOf = (n: Node) => [
+  ...(n.icon && MARKER_OF_ICON[n.icon] ? [{ markerId: MARKER_OF_ICON[n.icon] }] : []),
   ...(n.priority ? [{ markerId: `priority-${n.priority}` }] : []),
   ...(n.progress != null ? [{ markerId: progressMarker(n.progress) }] : []),
 ];
@@ -106,12 +107,13 @@ const styleOf = (n: Node): XTopic["style"] => {
     ...(n.italic ? { "fo:font-style": "italic" } : {}),
     ...(n.strike ? { "fo:text-decoration": "line-through" } : {}),
     ...(n.textColor ? { "fo:color": n.textColor } : {}),
+    ...(n.color ? { "svg:fill": n.color } : {}),
   };
   return Object.keys(properties).length ? { id: crypto.randomUUID(), properties } : undefined;
 };
 
 /** What writing a document gathers along the way: the topic ids it holds, the summaries by parent topic, and the picture files for the zip. */
-type Out = { known: Set<string>; sums: Map<string, Summary[]>; files: Record<string, Uint8Array> };
+type Out = { known: Set<string>; sums: Map<string, Summary[]>; bounds: Map<string, string[]>; files: Record<string, Uint8Array> };
 
 /** A topic's picture as a zip resource (its data URL decoded), or undefined if it is not one we can write. */
 function pictureOf(n: Node, out: Out): XTopic["image"] {
@@ -130,6 +132,7 @@ const toX = (n: Node, out: Out): XTopic => {
     return i < 0 || j < 0 ? [] : [{ range: `(${Math.min(i, j)},${Math.max(i, j)})`, topicId: crypto.randomUUID(), text: sm.text }];
   });
   const image = pictureOf(n, out);
+  const ranges = out.bounds.get(n.id) ?? [];
   return {
     id: n.id,
     class: "topic",
@@ -141,6 +144,7 @@ const toX = (n: Node, out: Out): XTopic => {
     ...(image ? { image } : {}),
     ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
     ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
+    ...(ranges.length ? { boundaries: ranges.map((range) => ({ id: crypto.randomUUID(), class: "boundary", range })) } : {}),
     ...(summaries.length ? { summaries: summaries.map(({ text: _text, ...sm }) => ({ id: crypto.randomUUID(), ...sm })) } : {}),
     ...(n.children.length
       ? {
@@ -154,7 +158,7 @@ const toX = (n: Node, out: Out): XTopic => {
   };
 };
 
-const HANDLED_STYLE = new Set(["fo:font-weight", "fo:font-style", "fo:text-decoration", "fo:color"]);
+const HANDLED_STYLE = new Set(["fo:font-weight", "fo:font-style", "fo:text-decoration", "fo:color", "svg:fill"]);
 
 const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml" };
 const DATA_URL_BUDGET = 700_000; // the same ceiling a picture added in the editor is held to
@@ -187,8 +191,8 @@ const picturesOf = (files: Map<string, Uint8Array>, rep: Report): Pictures => (t
   return { src, w: Math.max(1, Math.round(size.w || 100)), h: Math.max(1, Math.round(size.h || 100)) };
 };
 
-/** Summaries found while reading topics; they live on the root of a sheet. */
-type Acc = Summary[];
+/** Summaries and boundaries found while reading topics; both live on the root of a sheet. */
+type Acc = { sums: Summary[]; bounds: string[] };
 
 /** "(2,4)" -> [2, 4]: the first and last summarised child. */
 const rangeOf = (r: string | undefined) => {
@@ -205,18 +209,18 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: 
   for (const sm of t.summaries ?? []) {
     const r = rangeOf(sm.range), from = r && children[r[0]], to = r && children[r[1]];
     const title = (t.children?.summary ?? []).find((x) => x.id === sm.topicId)?.title;
-    if (from && to && title != null) acc.push({ id: crypto.randomUUID(), from: from.id, to: to.id, text: title });
+    if (from && to && title != null) acc.sums.push({ id: crypto.randomUUID(), from: from.id, to: to.id, text: title });
     else rep.add("summaries dropped");
   }
   const markerIds = (t.markers ?? []).map((m) => m.markerId); // other marker kinds (flags, symbols…) are dropped
   const sp = t.style?.properties ?? {};
-  rep.add("markers other than priority and progress dropped", markerIds.filter((m) => !isKnownMarker(m)).length);
-  rep.add("boundaries dropped", t.boundaries?.length ?? 0);
+  rep.add("markers with no counterpart dropped", lostMarkers(markerIds));
   rep.add("labels dropped", t.labels?.length ?? 0);
   const image = pic(t);
   rep.add("rich-text notes flattened to plain text", t.notes?.html ? 1 : 0);
-  rep.add("topic styles other than bold, italic, strike and colour dropped", Object.keys(sp).some((k) => !HANDLED_STYLE.has(k)) ? 1 : 0);
+  rep.add("topic styles other than bold, italic, strike, text colour and fill dropped", Object.keys(sp).some((k) => !HANDLED_STYLE.has(k)) ? 1 : 0);
   const color = hex(sp["fo:color"]?.slice(0, 7)); // XMind may append an alpha pair
+  const fill = hex(sp["svg:fill"]?.slice(0, 7));
   const to = topicHref(t.href);
   const node: Node = {
     id: crypto.randomUUID(),
@@ -228,10 +232,12 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: 
     ...(sp["fo:font-style"] === "italic" ? { italic: true } : {}),
     ...(sp["fo:text-decoration"]?.includes("line-through") ? { strike: true } : {}),
     ...(color ? { textColor: color } : {}),
+    ...(fill ? { color: fill } : {}),
     ...(image ? { image } : {}),
     ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
     ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
   };
+  acc.bounds.push(...boundTopics(node, t.boundaries ?? [], rep));
   ids.set(t.id, node.id); // lets links between topics find their new targets
   return node;
 };
@@ -274,7 +280,14 @@ export function exportXmind(roots: Node | Node[]): Uint8Array {
     const parent = parentOf(r, sm.from);
     if (parent) sums.set(parent.id, [...(sums.get(parent.id) ?? []), sm]);
   }
-  const out: Out = { known: new Set(list.flatMap(idsOf)), sums, files: {} };
+  const bounds = new Map<string, string[]>(); // parent topic -> the ranges its boundaries cover
+  for (const r of list) for (const id of r.bounds ?? []) {
+    const parent = parentOf(r, id), at = parent?.children.filter((c) => !c.float).findIndex((c) => c.id === id);
+    const [on, range] = parent ? [parent.id, `(${at},${at})`] : [r.id, "master"]; // the central topic has no parent: it is wrapped as a whole
+    if (parent ? at! < 0 : id !== r.id) continue;
+    bounds.set(on, [...(bounds.get(on) ?? []), range]);
+  }
+  const out: Out = { known: new Set(list.flatMap(idsOf)), sums, bounds, files: {} };
   const content = JSON.stringify(list.map((r, i) => toSheet(r, i, out))); // fills out.files with the pictures
   return zip({
     "content.json": content,
@@ -300,9 +313,10 @@ export async function importXmindReport(bytes: Uint8Array): Promise<{ roots: Nod
   const roots = (JSON.parse(dec.decode(content)) as XSheet[])
     .filter((sh) => sh.rootTopic)
     .map((sh) => {
-      const sums: Acc = [];
-      const root = fromX(sh.rootTopic!, ids, rep, sums, pictures, true);
-      if (sums.length) root.summaries = sums;
+      const acc: Acc = { sums: [], bounds: [] };
+      const root = fromX(sh.rootTopic!, ids, rep, acc, pictures, true);
+      if (acc.sums.length) root.summaries = acc.sums;
+      if (acc.bounds.length) root.bounds = acc.bounds;
       pendingRels.push([root, sh.relationships ?? []]);
       const sc = sh.rootTopic!.structureClass ?? "";
       const layout = layoutOf(sc); // matrix, timeline… stay the default logic chart
