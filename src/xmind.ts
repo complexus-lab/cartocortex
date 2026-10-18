@@ -251,6 +251,7 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   tree: "org.xmind.ui.tree.right",
   fish: "org.xmind.ui.fishbone.rightHeaded",
   line: "org.xmind.ui.timeline.horizontal",
+  vline: "org.xmind.ui.timeline.vertical",
   left: "org.xmind.ui.logic.left",
   brace: "org.xmind.ui.brace.right",
   matrix: "org.xmind.ui.spreadsheet.column",

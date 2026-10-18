@@ -71,7 +71,7 @@ test("summaries are only drawn in sideways layouts", () => {
 });
 
 test("xmind export/import keeps the structure", async () => {
-  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix", "up", "tree-left", "brace-left", "fish-left", "map-ccw"] as const) {
+  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix", "up", "tree-left", "brace-left", "fish-left", "map-ccw", "vline"] as const) {
     const back = await importXmindSheets(exportXmind({ ...mk("r"), layout: kind }));
     expect(back[0].layout ?? "right").toBe(kind);
   }
@@ -289,4 +289,52 @@ test("arrow keys follow a mirrored structure", () => {
   expect(neighbour(up, ub, up.id, "up")).toBe(up.children[0].id);
   const ccw = sample("map-ccw"), cb = layout(ccw);
   expect(cb.find((b) => b.id === ccw.children[0].id)!.side).toBe(-1); // the first half of a map now grows leftwards
+});
+
+function vertical() {
+  let r: Node = { ...mk("head"), layout: "vline" };
+  const t = ["one", "two", "three", "four"].map(mk);
+  for (const n of t) r = addChild(r, r.id, n);
+  const kids = ["x", "y", "z"].map(mk);
+  for (const k of kids) r = addChild(r, t[0].id, k); // topic one is tall: its stack must not collide with topic three on the same side
+  r = addChild(r, kids[0].id, mk("deep"));
+  return { r, t, kids };
+}
+
+test("vertical timeline: topics alternate sides down the line and never overlap", () => {
+  const { r, t } = vertical();
+  const boxes = layout(r), by = Object.fromEntries(boxes.map((b) => [b.id, b]));
+  const head = boxes[0], spine = head.x + head.w / 2;
+  expect(t.map((n) => by[n.id].side)).toEqual([1, -1, 1, -1]);
+  for (const n of t) expect(by[n.id].side === 1 ? by[n.id].x > spine : by[n.id].x + by[n.id].w < spine).toBe(true);
+  const ys = t.map((n) => by[n.id].y);
+  expect(ys).toEqual([...ys].sort((a, b) => a - b)); // in order down the line
+  expect(by[t[0].id].y).toBeGreaterThan(head.y + head.h);
+  // no two boxes on the same side overlap
+  for (const a of boxes) for (const b of boxes) {
+    if (a.id < b.id && a.side === b.side && a.id !== head.id && b.id !== head.id) {
+      const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+      expect(apart, `${a.id} vs ${b.id}`).toBe(true);
+    }
+  }
+  expect(boxes.every((b) => b.flow === "vline")).toBe(true);
+});
+
+test("vertical timeline: descendants grow outward and connectors run down the line", () => {
+  const { r, t, kids } = vertical();
+  const boxes = layout(r), by = Object.fromEntries(boxes.map((b) => [b.id, b]));
+  expect(by[kids[0].id].x).toBeGreaterThan(by[t[0].id].x + by[t[0].id].w); // on the right, to the right of the topic
+  const two = by[t[1].id];
+  expect(branchD(two, boxes[0])).toMatch(/^M-?[\d.]+ -?[\d.]+V-?[\d.]+H-?[\d.]+$/);
+  expect(branchD(two, boxes[0]).endsWith(`H${two.x + two.w}`)).toBe(true); // the left-hand topic is met at its right edge
+  expect(branchD(by[kids[0].id], by[t[0].id])).toMatch(/C/); // deeper topics hang off their parent with the usual curve
+});
+
+test("vertical timeline: arrow keys run down the line and into the stacks", () => {
+  const { r, t, kids } = vertical();
+  const boxes = layout(r), go = (id: string, d: "left" | "right" | "up" | "down") => neighbour(r, boxes, id, d);
+  expect([go(r.id, "down"), go(t[0].id, "down"), go(t[1].id, "down"), go(t[3].id, "down")]).toEqual([t[0].id, t[1].id, t[2].id, t[3].id]);
+  expect([go(t[1].id, "up"), go(t[0].id, "up")]).toEqual([t[0].id, r.id]);
+  expect([go(t[0].id, "right"), go(r.id, "right"), go(r.id, "left")]).toEqual([kids[0].id, t[0].id, t[1].id]); // right-hand topic into its stack; root to the first topic on each side
+  expect(go(kids[0].id, "left")).toBe(t[0].id);
 });
