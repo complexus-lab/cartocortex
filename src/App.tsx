@@ -11,6 +11,7 @@ import { customColors, customTheme } from "./theme";
 import { Menu } from "./Menu";
 import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDocReport, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
+import { setUnsaved, wasUnsaved } from "./recovery";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
 import { normalizeUrl } from "./links";
@@ -94,7 +95,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
   const [docPath, setDocPath] = useState<string | null>(null); // where the document lives on disk (desktop app)
   const [dirty, setDirty] = useState(false); // changed since it was last saved or opened
   const [recent, setRecent] = useState<string[]>(loadRecent);
-  const savedJson = useRef<string | null>(null); // the document as last saved or opened
+  const savedJson = useRef<string | null>(primary && wasUnsaved() ? "" : null); // the document as last saved or opened; "" when an autosave restored unsaved work, which then counts as changed
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
   const [renaming, setRenaming] = useState<number | null>(null); // sheet tab being renamed
@@ -158,6 +159,10 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
     savedJson.current ??= json; // the first document counts as saved
     setDirty(json !== savedJson.current);
   }, [s.root, sheets]);
+
+  useEffect(() => {
+    if (primary) setUnsaved(dirty); // lets the next launch know whether the autosave holds unsaved work
+  }, [dirty]);
 
   /** Apply an edit to the tree, recording undo history. */
   const commit = (fn: (r: Node) => Node, sel?: string, edit: string | null = null) =>

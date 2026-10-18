@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import App, { KEY } from "./App";
 import { baseName, confirmDiscard } from "./files";
+import { setUnsaved } from "./recovery";
 
 type Tab = { id: number; path?: string; name: string; dirty: boolean };
 
@@ -20,7 +21,7 @@ export default function Shell() {
   const close = async (id: number) => {
     const tab = tabs.find((x) => x.id === id);
     if (tab?.dirty && !(await confirmDiscard())) return;
-    if (id === 0) try { localStorage.removeItem(KEY); } catch { /* best-effort */ } // the autosave belonged to the first tab
+    if (id === 0) { try { localStorage.removeItem(KEY); } catch { /* best-effort */ } setUnsaved(false); } // the autosave belonged to the first tab
     const i = tabs.findIndex((x) => x.id === id), rest = tabs.filter((x) => x.id !== id);
     if (!rest.length) return add(), setTabs((t) => t.filter((x) => x.id !== id));
     setTabs(rest);
