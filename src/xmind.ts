@@ -252,6 +252,7 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   fish: "org.xmind.ui.fishbone.rightHeaded",
   line: "org.xmind.ui.timeline.horizontal",
   vline: "org.xmind.ui.timeline.vertical",
+  "matrix-row": "org.xmind.ui.spreadsheet.row",
   left: "org.xmind.ui.logic.left",
   brace: "org.xmind.ui.brace.right",
   matrix: "org.xmind.ui.spreadsheet.column",

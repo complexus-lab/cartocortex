@@ -40,13 +40,13 @@ test("a clean file reports nothing", async () => {
 });
 
 test("XML import lists what it drops", async () => {
-  const xml = `<xmap-content><sheet><topic id="r" structure-class="org.xmind.ui.spreadsheet.row"><title>r</title>
+  const xml = `<xmap-content><sheet><topic id="r" structure-class="org.xmind.ui.treetable"><title>r</title>
     <marker-refs><marker-ref marker-id="smiley-smile"/></marker-refs>
     <children><topics type="attached"><topic id="a"><title>a</title></topic></topics><topics type="detached"><topic id="f"><title>f</title></topic></topics></children>
     </topic><relationships><relationship id="x" end1="r" end2="a"/></relationships></sheet></xmap-content>`;
   const { lost } = await importXmindReport(zip({ "content.xml": xml }));
   expect(lost).toEqual(expect.arrayContaining([
-    "structure spreadsheet.row opened as matrix", "markers with no counterpart dropped", "floating topics dropped", "relationships dropped",
+    "structure treetable opened as tree", "markers with no counterpart dropped", "floating topics dropped", "relationships dropped",
   ]));
 });
 

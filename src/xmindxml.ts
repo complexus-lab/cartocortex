@@ -83,7 +83,7 @@ const allText = (n: XNode): string => n.text.trim() || n.children.map(allText).f
 export function layoutOf(structureClass: string): Node["layout"] | undefined {
   if (structureClass.includes("logic.left")) return "left";
   if (structureClass.includes("brace")) return structureClass.includes("brace.left") ? "brace-left" : "brace";
-  if (structureClass.includes("spreadsheet")) return "matrix"; // XMind's matrix, row or column
+  if (structureClass.includes("spreadsheet")) return /row/i.test(structureClass) ? "matrix-row" : "matrix"; // XMind's matrix, by rows or by columns
   if (structureClass.includes("fishbone")) return structureClass.includes("leftHeaded") ? "fish-left" : "fish";
   if (structureClass.includes("timeline")) return structureClass.includes("vertical") ? "vline" : "line";
   if (structureClass.includes("org-chart")) return structureClass.includes("org-chart.up") ? "up" : "down";
@@ -98,7 +98,7 @@ export function layoutOf(structureClass: string): Node["layout"] | undefined {
 const EXACT: Record<string, string> = {
   "org.xmind.ui.logic.right": "right", "org.xmind.ui.logic.left": "left", "org.xmind.ui.map.clockwise": "map",
   "org.xmind.ui.org-chart.down": "down", "org.xmind.ui.tree.right": "tree", "org.xmind.ui.fishbone.rightHeaded": "fish",
-  "org.xmind.ui.timeline.horizontal": "line", "org.xmind.ui.timeline.vertical": "vline", "org.xmind.ui.brace.right": "brace", "org.xmind.ui.spreadsheet.column": "matrix",
+  "org.xmind.ui.timeline.horizontal": "line", "org.xmind.ui.timeline.vertical": "vline", "org.xmind.ui.brace.right": "brace", "org.xmind.ui.spreadsheet.column": "matrix", "org.xmind.ui.spreadsheet.row": "matrix-row",
   "org.xmind.ui.org-chart.up": "up", "org.xmind.ui.tree.left": "tree-left", "org.xmind.ui.brace.left": "brace-left",
   "org.xmind.ui.fishbone.leftHeaded": "fish-left", "org.xmind.ui.map.anticlockwise": "map-ccw",
 };

@@ -71,7 +71,7 @@ test("summaries are only drawn in sideways layouts", () => {
 });
 
 test("xmind export/import keeps the structure", async () => {
-  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix", "up", "tree-left", "brace-left", "fish-left", "map-ccw", "vline"] as const) {
+  for (const kind of ["right", "left", "map", "down", "tree", "fish", "line", "brace", "matrix", "up", "tree-left", "brace-left", "fish-left", "map-ccw", "vline", "matrix-row"] as const) {
     const back = await importXmindSheets(exportXmind({ ...mk("r"), layout: kind }));
     expect(back[0].layout ?? "right").toBe(kind);
   }
@@ -337,4 +337,47 @@ test("vertical timeline: arrow keys run down the line and into the stacks", () =
   expect([go(t[1].id, "up"), go(t[0].id, "up")]).toEqual([t[0].id, r.id]);
   expect([go(t[0].id, "right"), go(r.id, "right"), go(r.id, "left")]).toEqual([kids[0].id, t[0].id, t[1].id]); // right-hand topic into its stack; root to the first topic on each side
   expect(go(kids[0].id, "left")).toBe(t[0].id);
+});
+
+function rows() {
+  let r: Node = { ...mk("head"), layout: "matrix-row" };
+  const [x, y] = [mk("row X"), mk("row Y")];
+  r = addChild(addChild(r, r.id, x), r.id, y);
+  const cells = ["c1", "c2", "c3"].map(mk);
+  for (const c of cells) r = addChild(r, x.id, c);
+  const sub = ["s1", "s2"].map(mk);
+  for (const s of sub) r = addChild(r, cells[0].id, s); // the first cell is tall: it widens its column, not the row above
+  r = addChild(r, y.id, mk("lonely"));
+  return { r, x, y, cells, sub };
+}
+
+test("row matrix: headers down the line, cells side by side, stacks under cells", () => {
+  const { r, x, y, cells, sub } = rows();
+  const boxes = layout(r), by = Object.fromEntries(boxes.map((b) => [b.id, b]));
+  expect(boxes.every((b) => b.flow === "rmatrix")).toBe(true);
+  expect(by[y.id].y).toBeGreaterThan(by[x.id].y + by[x.id].h); // rows below one another
+  expect(by[x.id].x).toBe(by[y.id].x); // headers share a column
+  const cy = cells.map((c) => by[c.id]);
+  expect(cy.every((b) => b.y === by[x.id].y)).toBe(true); // cells sit on the header's line
+  expect(cy[0].x).toBeGreaterThan(by[x.id].x + by[x.id].w);
+  expect(cy[1].x).toBeGreaterThan(cy[0].x + cy[0].w);
+  expect(cy[2].x).toBeGreaterThan(cy[1].x + cy[1].w);
+  expect(sub.map((s) => by[s.id].y)).toEqual([...sub.map((s) => by[s.id].y)].sort((a, b) => a - b)); // stacked downwards
+  expect(by[sub[0].id].y).toBeGreaterThan(cy[0].y + cy[0].h);
+  expect(by[y.id].y).toBeGreaterThan(by[sub[1].id].y + H_BOX); // the next row starts below the tallest stack
+  for (const a of boxes) for (const b of boxes) {
+    if (a.id < b.id) expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `${a.id} vs ${b.id}`).toBe(true);
+  }
+});
+const H_BOX = 34;
+
+test("row matrix: connectors and arrow keys", () => {
+  const { r, x, y, cells, sub } = rows();
+  const boxes = layout(r), by = Object.fromEntries(boxes.map((b) => [b.id, b])), go = (id: string, d: "left" | "right" | "up" | "down") => neighbour(r, boxes, id, d);
+  expect(branchD(by[x.id], boxes[0])).toMatch(/^M[\d.]+ [\d.]+V[\d.]+H[\d.]+$/);
+  expect(branchD(by[cells[1].id], by[x.id])).toMatch(/^M[\d.]+ [\d.]+H[\d.]+$/);
+  expect(branchD(by[sub[0].id], by[cells[0].id])).toMatch(/V/);
+  expect([go(r.id, "down"), go(x.id, "down"), go(y.id, "up"), go(x.id, "up")]).toEqual([x.id, y.id, x.id, r.id]);
+  expect([go(x.id, "right"), go(cells[0].id, "right"), go(cells[2].id, "right"), go(cells[1].id, "left"), go(cells[0].id, "left")]).toEqual([cells[0].id, cells[1].id, cells[2].id, cells[0].id, x.id]);
+  expect([go(cells[0].id, "down"), go(sub[0].id, "down"), go(sub[1].id, "down"), go(sub[1].id, "up")]).toEqual([sub[0].id, sub[1].id, sub[1].id, cells[0].id]); // up from a stacked topic goes to its parent
 });

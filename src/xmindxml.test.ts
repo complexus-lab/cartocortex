@@ -72,7 +72,8 @@ test("layoutOf covers the remaining XMind structure classes", () => {
     "org.xmind.ui.brace.right": "brace",
     "org.xmind.ui.brace.left": "brace-left",
     "org.xmind.ui.spreadsheet.column": "matrix",
-    "org.xmind.ui.structure.spreadsheet.row": "matrix",
+    "org.xmind.ui.structure.spreadsheet.row": "matrix-row",
+    "org.xmind.ui.spreadsheet.row": "matrix-row",
     "org.xmind.ui.treetable.toptitle": "tree", // nearest match
     "org.xmind.ui.map.unbalanced": "map", // XMind's default map
     "org.xmind.ui.logic-chart.right": undefined,
