@@ -44,6 +44,8 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
+Mobile (iOS / Android): a port study lives in [docs/mobile-port.md](docs/mobile-port.md) — not implemented.
+
 Direction variants of XMind structures (up-pointing org chart, left-hand tree), which open as the nearest structure; floating topics, relationships and styles from imported XMind 8 files.
 
 ## Added
