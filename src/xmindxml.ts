@@ -1,5 +1,6 @@
 import { Node } from "./model";
 import { fromMarkers } from "./task";
+import { Report, isKnownMarker } from "./importreport";
 
 // Reader for the XML-only .xmind format (XMind 8 and earlier: content.xml inside the zip).
 // Deliberately tiny and strict: no DOCTYPE (so no entity tricks), only the five predefined entities plus numeric ones.
@@ -91,6 +92,19 @@ export function layoutOf(structureClass: string): Node["layout"] | undefined {
   return undefined;
 }
 
+/** Structure classes that open exactly as XMind draws them (layout name -> class); any other class is approximated. */
+const EXACT: Record<string, string> = {
+  "org.xmind.ui.logic.right": "right", "org.xmind.ui.logic.left": "left", "org.xmind.ui.map.clockwise": "map",
+  "org.xmind.ui.org-chart.down": "down", "org.xmind.ui.tree.right": "tree", "org.xmind.ui.fishbone.rightHeaded": "fish",
+  "org.xmind.ui.timeline.horizontal": "line", "org.xmind.ui.brace.right": "brace", "org.xmind.ui.spreadsheet.column": "matrix",
+};
+
+/** Records a structure XMind uses that opens as the nearest one here. An absent class is XMind's default and loses nothing. */
+export function noteStructure(structureClass: string, layout: Node["layout"], rep: Report) {
+  if (!structureClass || EXACT[structureClass] === (layout ?? "right")) return;
+  rep.add(`structure ${structureClass.replace(/^org\.xmind\.ui\./, "")} opened as ${layout ?? "logic chart"}`);
+}
+
 /** XMind writes a link to another topic as the href "xmind:#<topic id>". */
 export const topicHref = (href: string | undefined) => (href?.startsWith("xmind:#") ? href.slice(7) : undefined);
 
@@ -107,12 +121,18 @@ export function resolveTopicLinks(roots: Node[], ids: Map<string, string>) {
   roots.forEach(fix);
 }
 
-function topicFromXml(t: XNode, ids: Map<string, string>): Node {
+function topicFromXml(t: XNode, ids: Map<string, string>, rep: Report): Node {
   const attached = kid(t, "children")?.children.find((c) => c.name === "topics" && (c.attrs.type ?? "attached") === "attached");
-  const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids));
+  const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids, rep));
+  const subs = kid(t, "children")?.children.filter((c) => c.name === "topics") ?? [];
+  rep.add("floating topics dropped", subs.filter((c) => c.attrs.type === "detached").reduce((n, c) => n + c.children.length, 0));
+  rep.add("summaries dropped", subs.filter((c) => c.attrs.type === "summary").reduce((n, c) => n + c.children.length, 0));
+  rep.add("boundaries dropped", kid(t, "boundaries")?.children.length ?? 0);
+  rep.add("labels dropped", kid(t, "labels")?.children.length ?? 0);
   const notes = kid(t, "notes");
   const note = notes ? (kid(notes, "plain") ? kid(notes, "plain")!.text : allText(notes)).trim() : "";
   const markers = (kid(t, "marker-refs")?.children ?? []).map((m) => m.attrs["marker-id"]).filter(Boolean);
+  rep.add("markers other than priority and progress dropped", markers.filter((m) => !isKnownMarker(m)).length);
   const to = topicHref(t.attrs.href);
   const node: Node = {
     id: crypto.randomUUID(),
@@ -128,16 +148,19 @@ function topicFromXml(t: XNode, ids: Map<string, string>): Node {
 }
 
 /** Every sheet's root topic from an XMind 8 content.xml. Styles, relationships, floating topics and other markers are dropped. */
-export function sheetsFromXml(src: string): Node[] {
+export function sheetsFromXml(src: string, rep = new Report()): Node[] {
   const ids = new Map<string, string>();
   const roots = parseXml(src)
     .children.filter((c) => c.name === "sheet")
     .flatMap((sheet) => {
       const t = kid(sheet, "topic");
       if (!t) return [];
-      const root = topicFromXml(t, ids);
-      const layout = layoutOf(t.attrs["structure-class"] ?? "");
+      const root = topicFromXml(t, ids, rep);
+      const sc = t.attrs["structure-class"] ?? "";
+      const layout = layoutOf(sc);
       if (layout) root.layout = layout;
+      noteStructure(sc, layout, rep);
+      rep.add("relationships dropped", kid(sheet, "relationships")?.children.length ?? 0);
       const title = kid(sheet, "title")?.text.trim();
       if (title) root.title = title;
       return [root];

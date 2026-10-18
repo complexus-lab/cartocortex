@@ -9,7 +9,7 @@ import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
 import { customColors, customTheme } from "./theme";
 import { Menu } from "./Menu";
-import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
+import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDocReport, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
@@ -281,12 +281,13 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
     }
   };
   const loadOpened = async (f: Opened) => {
-    const book = await parseDoc(f.name, f.bytes);
+    const book = await parseDocReport(f.name, f.bytes);
     setDocName(f.name);
     openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
     // Any format but our own JSON is an import: the map stays "unsaved", so Save asks for a new file instead of overwriting the original.
     const own = keepsPath(f.name);
     markSaved(own ? f.path : null, own ? bookJson(book.roots, book.cur) : "");
+    if (book.lost.length) alert(`${f.name} opened, but not everything could be kept:\n\n${book.lost.map((l) => `• ${l}`).join("\n")}`);
   };
   const occupied = useRef(!!openPath); // this tab already holds a file, so another one opens in a new tab
   const open = async (path?: string) => {
