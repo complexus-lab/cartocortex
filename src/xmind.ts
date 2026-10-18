@@ -1,4 +1,4 @@
-import { Node, Rel, Summary } from "./model";
+import { Node, Rel, Summary, parentOf } from "./model";
 import { fromMarkers, progressMarker } from "./task";
 import { layoutOf, noteStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
@@ -25,12 +25,12 @@ const crc32 = (b: Uint8Array) => {
   return (c ^ 0xffffffff) >>> 0;
 };
 
-export function zip(files: Record<string, string>): Uint8Array {
+export function zip(files: Record<string, string | Uint8Array>): Uint8Array {
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
   for (const [name, text] of Object.entries(files)) {
-    const nameB = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+    const nameB = enc.encode(name), data = typeof text === "string" ? enc.encode(text) : text, crc = crc32(data);
     const lh = new DataView(new ArrayBuffer(30));
     lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
     lh.setUint16(12, 33, true); // dos date: 1980-01-01
@@ -110,19 +110,49 @@ const styleOf = (n: Node): XTopic["style"] => {
   return Object.keys(properties).length ? { id: crypto.randomUUID(), properties } : undefined;
 };
 
+/** What writing a document gathers along the way: the topic ids it holds, the summaries by parent topic, and the picture files for the zip. */
+type Out = { known: Set<string>; sums: Map<string, Summary[]>; files: Record<string, Uint8Array> };
+
+/** A topic's picture as a zip resource (its data URL decoded), or undefined if it is not one we can write. */
+function pictureOf(n: Node, out: Out): XTopic["image"] {
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(n.image?.src ?? ""), ext = m && Object.keys(MIME).find((k) => MIME[k] === m[1]);
+  if (!n.image || !m || !ext) return undefined;
+  const path = `resources/${n.id}.${ext}`;
+  out.files[path] = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+  return { src: `xap:${path}`, width: n.image.w, height: n.image.h };
+}
+
 /** `known` holds every topic id in the file: a link to another topic is only written if its target is there. */
-const toX = (n: Node, known: Set<string>): XTopic => ({
-  id: n.id,
-  class: "topic",
-  title: n.text,
-  // XMind has one href per topic: an outside link wins over a link to another topic.
-  ...(n.link ? { href: n.link } : n.topicLink && known.has(n.topicLink) ? { href: `xmind:#${n.topicLink}` } : {}),
-  ...(markersOf(n).length ? { markers: markersOf(n) } : {}),
-  ...(styleOf(n) ? { style: styleOf(n) } : {}),
-  ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
-  ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
-  ...(n.children.length ? { children: { attached: n.children.map((c) => toX(c, known)) } } : {}),
-});
+const toX = (n: Node, out: Out): XTopic => {
+  const attached = n.children.filter((c) => !c.float), floating = n.children.filter((c) => c.float);
+  const summaries = (out.sums.get(n.id) ?? []).flatMap((sm) => {
+    const i = attached.findIndex((c) => c.id === sm.from), j = attached.findIndex((c) => c.id === sm.to);
+    return i < 0 || j < 0 ? [] : [{ range: `(${Math.min(i, j)},${Math.max(i, j)})`, topicId: crypto.randomUUID(), text: sm.text }];
+  });
+  const image = pictureOf(n, out);
+  return {
+    id: n.id,
+    class: "topic",
+    title: n.text,
+    // XMind has one href per topic: an outside link wins over a link to another topic.
+    ...(n.link ? { href: n.link } : n.topicLink && out.known.has(n.topicLink) ? { href: `xmind:#${n.topicLink}` } : {}),
+    ...(markersOf(n).length ? { markers: markersOf(n) } : {}),
+    ...(styleOf(n) ? { style: styleOf(n) } : {}),
+    ...(image ? { image } : {}),
+    ...(n.note ? { notes: { plain: { content: n.note } } } : {}),
+    ...(n.collapsed && n.children.length ? { branch: "folded" } : {}),
+    ...(summaries.length ? { summaries: summaries.map(({ text: _text, ...sm }) => ({ id: crypto.randomUUID(), ...sm })) } : {}),
+    ...(n.children.length
+      ? {
+          children: {
+            ...(attached.length ? { attached: attached.map((c) => toX(c, out)) } : {}),
+            ...(floating.length ? { detached: floating.map((c) => ({ ...toX(c, out), position: { x: c.float!.x, y: c.float!.y } })) } : {}),
+            ...(summaries.length ? { summary: summaries.map((sm) => ({ id: sm.topicId, class: "topic", title: sm.text })) } : {}),
+          },
+        }
+      : {}),
+  };
+};
 
 const HANDLED_STYLE = new Set(["fo:font-weight", "fo:font-style", "fo:text-decoration", "fo:color"]);
 
@@ -206,7 +236,7 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: 
   return node;
 };
 
-type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic; relationships?: { id?: string; end1Id?: string; end2Id?: string }[] };
+type XSheet = { id: string; class?: string; title?: string; rootTopic?: XTopic; relationships?: { id?: string; class?: string; end1Id?: string; end2Id?: string }[] };
 
 const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   right: "org.xmind.ui.logic.right",
@@ -220,26 +250,37 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   matrix: "org.xmind.ui.spreadsheet.column",
 };
 
-const toSheet = (root: Node, i: number, known: Set<string>): XSheet => ({
-  id: crypto.randomUUID(),
-  class: "sheet",
-  title: root.title || root.text || `Sheet ${i + 1}`,
-  rootTopic: {
-    ...toX(root, known),
-    structureClass: STRUCTURE[root.layout ?? "right"],
-  },
-});
+const toSheet = (root: Node, i: number, out: Out): XSheet => {
+  const rels = (root.rels ?? []).filter((r) => out.known.has(r.from) && out.known.has(r.to));
+  return {
+    id: crypto.randomUUID(),
+    class: "sheet",
+    title: root.title || root.text || `Sheet ${i + 1}`,
+    rootTopic: {
+      ...toX(root, out),
+      structureClass: STRUCTURE[root.layout ?? "right"],
+    },
+    ...(rels.length ? { relationships: rels.map((r) => ({ id: r.id, class: "relationship", end1Id: r.from, end2Id: r.to })) } : {}),
+  };
+};
 
 const idsOf = (n: Node): string[] => [n.id, ...n.children.flatMap(idsOf)];
 
 /** One XMind sheet per root topic. */
 export function exportXmind(roots: Node | Node[]): Uint8Array {
   const list = Array.isArray(roots) ? roots : [roots];
-  const known = new Set(list.flatMap(idsOf));
+  const sums = new Map<string, Summary[]>();
+  for (const r of list) for (const sm of r.summaries ?? []) {
+    const parent = parentOf(r, sm.from);
+    if (parent) sums.set(parent.id, [...(sums.get(parent.id) ?? []), sm]);
+  }
+  const out: Out = { known: new Set(list.flatMap(idsOf)), sums, files: {} };
+  const content = JSON.stringify(list.map((r, i) => toSheet(r, i, out))); // fills out.files with the pictures
   return zip({
-    "content.json": JSON.stringify(list.map((r, i) => toSheet(r, i, known))),
+    "content.json": content,
     "metadata.json": "{}",
-    "manifest.json": JSON.stringify({ "file-entries": { "content.json": {}, "metadata.json": {} } }),
+    "manifest.json": JSON.stringify({ "file-entries": { "content.json": {}, "metadata.json": {}, ...Object.fromEntries(Object.keys(out.files).map((f) => [f, {}])) } }),
+    ...out.files,
   });
 }
 
