@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { fromFreemind, fromFreemindBytes, toFreemind } from "./freemind";
-import { mk } from "./model";
+import { Node, mk } from "./model";
 
 const sample = `<map version="1.0.1">
   <node ID="ID_root" TEXT="Projet" FOLDED="true">
@@ -48,10 +48,13 @@ test("left-side topics everywhere open as a one-sided chart", () => {
   expect(roots[0].children.map((c) => c.text)).toEqual(["A", "B"]);
 });
 
+// Reading mints fresh ids (and remaps topic links onto them), so compare the maps without them.
+const noIds = (r: Node[]) => JSON.stringify(r, (k, v) => (k === "id" || k === "topicLink" ? undefined : v));
+
 test("a gzipped .mm opens like a plain one", async () => {
   const plain = new TextEncoder().encode(sample);
   const gz = new Uint8Array(await new Response(new Blob([plain as BlobPart]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
-  expect(await fromFreemindBytes(gz)).toEqual(await fromFreemindBytes(plain));
+  expect(noIds(await fromFreemindBytes(gz))).toBe(noIds(await fromFreemindBytes(plain)));
 });
 
 test("strict reading: a DOCTYPE, non-XML and a map without a topic are rejected", () => {
