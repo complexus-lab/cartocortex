@@ -11,8 +11,9 @@ import { downscale } from "./image";
 import { TEMPLATES } from "./templates";
 import { customColors, customTheme } from "./theme";
 import { Menu } from "./Menu";
-import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDoc, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
+import { Opened, baseName, confirmDiscard, docBytes, download, extOf, keepsPath, loadRecent, parseDocReport, pickImage, pickOpen, pickSavePath, pushRecent, readPath, saveRecent, writePath } from "./files";
 import { Book, bookJson, parseBook, sheetTitle } from "./book";
+import { clearTab, saveTab, setUnsaved, wasUnsaved } from "./recovery";
 import { branchD, braces, mapSvg, mapToPdf, mapToPng, relD } from "./export";
 import Outline from "./Outline";
 import { normalizeUrl } from "./links";
@@ -39,9 +40,10 @@ const ICONS = ["⭐", "❗", "❓", "✅", "❌", "💡", "🔥", "🚩", "⚠�
 const SHAPES = [["round", "Round"], ["rect", "Box"], ["line", "Line"]] as const;
 
 export const KEY = "mindmap.autosave";
-const load = (primary: boolean): Book => {
+const load = (primary: boolean, restored?: string): Book => {
   try {
-    if (!primary) throw 0; // only the first tab restores and keeps the autosave
+    if (restored) return parseBook(restored); // an unsaved tab left by a previous run
+    if (!primary) throw 0; // otherwise only the first tab restores and keeps the autosave
     return parseBook(localStorage.getItem(KEY) ?? "");
   } catch {
     return { roots: [{ ...mk("Central topic"), children: [mk("Branch 1"), mk("Branch 2")] }], cur: 0 };
@@ -78,14 +80,16 @@ async function openLink(raw: string) {
 export type AppProps = {
   active: boolean; // only the visible tab handles keys and sets the window title
   primary: boolean;
+  tabId: number;
+  restored?: string; // the unsaved document a previous run left in this tab
   openPath?: string; // a file to load when the tab is created
   onMeta: (name: string, dirty: boolean) => void;
   openTab: (path: string) => void;
 };
 
-export default function App({ active, primary, openPath, onMeta, openTab }: AppProps) {
+export default function App({ active, primary, tabId, restored, openPath, onMeta, openTab }: AppProps) {
   const [sheets, setSheets] = useState<Sheets>(() => {
-    const b = load(primary);
+    const b = load(primary, restored);
     return { roots: b.roots, hist: b.roots.map(emptyHist), cur: b.cur };
   });
   const [s, setS] = useState<S>(() => {
@@ -96,7 +100,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
   const [docPath, setDocPath] = useState<string | null>(null); // where the document lives on disk (desktop app)
   const [dirty, setDirty] = useState(false); // changed since it was last saved or opened
   const [recent, setRecent] = useState<string[]>(loadRecent);
-  const savedJson = useRef<string | null>(null); // the document as last saved or opened
+  const savedJson = useRef<string | null>(restored || (primary && wasUnsaved()) ? "" : null); // the document as last saved or opened; "" when an autosave restored unsaved work, which then counts as changed
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
   const [renaming, setRenaming] = useState<number | null>(null); // sheet tab being renamed
@@ -158,8 +162,14 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
       /* storage unavailable: autosave is best-effort */
     }
     savedJson.current ??= json; // the first document counts as saved
-    setDirty(json !== savedJson.current);
+    const changed = json !== savedJson.current;
+    if (!primary) changed ? saveTab(tabId, json) : clearTab(tabId); // other tabs keep a copy only while they hold unsaved changes
+    setDirty(changed);
   }, [s.root, sheets]);
+
+  useEffect(() => {
+    if (primary) setUnsaved(dirty); // lets the next launch know whether the autosave holds unsaved work
+  }, [dirty]);
 
   /** Apply an edit to the tree, recording undo history. */
   const commit = (fn: (r: Node) => Node, sel?: string, edit: string | null = null) =>
@@ -283,12 +293,13 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
     }
   };
   const loadOpened = async (f: Opened) => {
-    const book = await parseDoc(f.name, f.bytes);
+    const book = await parseDocReport(f.name, f.bytes);
     setDocName(f.name);
     openSheet(book.cur, { roots: book.roots, hist: book.roots.map(emptyHist), cur: book.cur });
     // Any format but our own JSON is an import: the map stays "unsaved", so Save asks for a new file instead of overwriting the original.
     const own = keepsPath(f.name);
     markSaved(own ? f.path : null, own ? bookJson(book.roots, book.cur) : "");
+    if (book.lost.length) alert(`${f.name} opened, but not everything could be kept:\n\n${book.lost.map((l) => `• ${l}`).join("\n")}`);
   };
   const occupied = useRef(!!openPath); // this tab already holds a file, so another one opens in a new tab
   const open = async (path?: string) => {
@@ -623,7 +634,7 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
         ]} />
         <Menu label="View" items={[
           { heading: "Structure" },
-          ...([["right", "Logic (right)"], ["left", "Logic (left)"], ["map", "Map (both sides)"], ["down", "Org chart (down)"], ["tree", "Tree (indented)"], ["fish", "Fishbone"], ["line", "Timeline"], ["brace", "Brace"], ["matrix", "Matrix"]] as const).map(([v, l]) => ({
+          ...([["right", "Logic (right)"], ["left", "Logic (left)"], ["map", "Map (both sides)"], ["map-ccw", "Map (anticlockwise)"], ["down", "Org chart (down)"], ["up", "Org chart (up)"], ["tree", "Tree (right)"], ["tree-left", "Tree (left)"], ["fish", "Fishbone (head right)"], ["fish-left", "Fishbone (head left)"], ["line", "Timeline (horizontal)"], ["vline", "Timeline (vertical)"], ["brace", "Brace (right)"], ["brace-left", "Brace (left)"], ["matrix", "Matrix (columns)"], ["matrix-row", "Matrix (rows)"]] as const).map(([v, l]) => ({
             label: l, checked: (s.root.layout ?? "right") === v, on: () => setDocProp({ layout: v }),
           })),
           { heading: "Theme" },
@@ -912,6 +923,17 @@ export default function App({ active, primary, openPath, onMeta, openTab }: AppP
                 <button key={id} className={(selNode.shape ?? "round") === id ? "on" : ""} onClick={() => setNode({ shape: id })}>{label}</button>
               ))}
             </div>
+            {["right", "left", "map", undefined].includes(s.root.layout) && selNode.id !== s.root.id && selNode.children.length > 0 && (
+              <>
+                <label>Branch structure</label>
+                <div className="row">
+                  <button className={!selNode.layout ? "on" : ""} title="Draw this branch like the rest of the map" onClick={() => setNode({ layout: undefined })}>Same</button>
+                  {([["down", "Org chart ↓"], ["up", "Org chart ↑"], ["tree", "Tree →"], ["tree-left", "Tree ←"]] as const).map(([id, label]) => (
+                    <button key={id} className={selNode.layout === id ? "on" : ""} onClick={() => setNode({ layout: id })}>{label}</button>
+                  ))}
+                </div>
+              </>
+            )}
             <label>Marker</label>
             <div className="row">
               {ICONS.map((i) => (

@@ -1,12 +1,14 @@
 # Cartocortex
 
+A [Complexus Lab](https://github.com/complexus-lab) project. See [CONTRIBUTING.md](CONTRIBUTING.md) to help.
+
 A local, native mind-mapping app (XMind-style). Tauri 2 + React + TypeScript. Files stay on your machine.
 
 Tabs and menus: the toolbar is three menus (File with templates, recent files and export; Insert; View with structure, theme and panels) plus Undo, Redo, Delete, Find and Save. Each map opens in its own tab (a blank tab is reused; Open… puts a map in a new tab when the current one holds a file or unsaved work); the second row of tabs is the sheets inside one map. Only the first tab keeps the autosave.
 
 ## Download
 
-Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The builds are not code-signed: on macOS, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open; on Windows choose More info, then Run anyway.
+Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The Windows and Linux builds are not code-signed (on Windows choose More info, then Run anyway). The macOS build is signed and notarized when the release was made with the Apple credentials; otherwise, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open. How releases are made: [RELEASING.md](RELEASING.md).
 
 ## Run
 
@@ -44,15 +46,15 @@ The ‹ chip on a node collapses its branch. The map autosaves to local storage;
 
 ## Not yet
 
-Direction variants of XMind structures (up-pointing org chart, left-hand tree), which open as the nearest structure; floating topics, relationships and styles from imported XMind 8 files.
+Tree tables and the unbalanced map, which open as the nearest structure (a branch's own structure is kept only for org charts and tree charts inside a logic chart or map); XMind's smileys, arrows, font sizes and line styles. An import lists what it could not keep.
 
 ## Added
 
-Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding and structure only).
+Fill colour, shape, emoji markers, notes and links (inspector panel); relationship lines and boundaries; Logic and Map (two-sided) structures; five themes with per-branch colours; copy/cut/paste/duplicate (⌘C/X/V/D); find (⌘F, Enter cycles); fit-to-view; `.xmind` open and export (all sheets; text, notes, links, folding, structure, pictures, relationships, summaries, floating topics, boundaries, icons, fills).
 
 Outline view (toolbar "Outline": Enter = sibling, Tab / Shift+Tab = indent / outdent, shares undo with the map) and PNG / PDF export (the PDF is one page holding an image of the map, so its text isn't selectable).
 
-Summaries: select a topic, click "Summary", then click the last topic of the range (it must share a parent). A bracket and an editable label (double-click) appear beside the span; click the label and press Delete to remove it. They are included in PNG/PDF export but not in `.xmind` export.
+Summaries: select a topic, click "Summary", then click the last topic of the range (it must share a parent). A bracket and an editable label (double-click) appear beside the span; click the label and press Delete to remove it. They are included in PNG/PDF and `.xmind` export.
 
 Presentation: "Present" goes full-screen and reveals one top-level branch per step (→ / Space / Enter next, ← back, Esc exit); earlier branches dim.
 
@@ -105,6 +107,8 @@ FreeMind / Freeplane: Open reads FreeMind's `.mm` maps (plain or gzipped) — to
 
 MindManager: Open reads MindManager's `.mmap` maps — a zip holding `Document.xml`, or the flat XML of the MindManager 10 for Mac builds — with topics, notes, links, task priorities and progress, fill and text colours, folding, relationships (as relationship lines), floating topics and callouts; the growth direction of the central topic opens as Logic (right), Logic (left) or Map. "Export MindManager" (and Save as `.mmap`) writes one map per sheet, so extra sheets may not show in MindManager itself; topic links to other topics, pictures, per-word style, boundaries and summaries are not carried. The format was taken from Freeplane's MindManager importer and WiseMapping's, and has not been checked against MindManager itself.
 
+Zip-based files (`.xmind`, `.mmap`) are refused if they would unpack to more than 64 MB, whatever size they claim, so a booby-trapped map cannot exhaust memory.
+
 Safety rule for opened files: only Cartocortex's own `.json` keeps its place on disk. Opening a `.xmind`, `.opml`, FreeMind, MindManager or Markdown file is an *import*: the map starts as unsaved, and ⌘S asks for a new file rather than overwriting your original with a lossy copy.
 
 Links between topics: in the panel, "Link to a topic" → "Pick a topic…", then click the target. The source gets a ↪ badge (and "Go ↪" in the panel); clicking it opens any collapsed branches above the target and selects it, also when the target is on another sheet. In `.xmind` files a topic link is `xmind:#<topic id>`: it survives a round trip, and XMind allows one link per topic, so an outside web link wins if a topic has both.
@@ -112,3 +116,5 @@ Links between topics: in the panel, "Link to a topic" → "Pick a topic…", the
 Pictures: the panel's "Picture" section puts an image (PNG, JPEG, GIF or WebP) on the selected topic, shown as a small thumbnail in the topic; click the thumbnail for the full image (Esc or a click closes it). The picture is downscaled to at most 800 px and stored inside the map file, so keep an eye on size (the autosave in the app's own storage has a few-megabyte limit). Pictures appear in PNG / PDF export but not in `.xmind`, OPML or Markdown. Only embedded raster images are ever drawn: SVG and web addresses in a map file are ignored.
 
 Templates: the "Template…" menu next to New starts a map from one of eight starters (brainstorm, project plan as a timeline, SWOT as a matrix, cause and effect as a fishbone, meeting notes as a tree, org chart, weekly plan, pros and cons as a brace map). Like New, it asks before discarding unsaved changes.
+
+Branch structure: select a topic that has children in a logic chart or map and pick *Same*, *Org chart ↓/↑* or *Tree →/←* in the panel to draw that branch with its own structure, as XMind allows; it round-trips through `.xmind`.
