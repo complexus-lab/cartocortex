@@ -1,15 +1,20 @@
 import { useRef, useState } from "react";
 import App, { KEY } from "./App";
 import { baseName, confirmDiscard } from "./files";
-import { setUnsaved } from "./recovery";
+import { clearTab, leftTabs, setUnsaved } from "./recovery";
 
-type Tab = { id: number; path?: string; name: string; dirty: boolean };
+type Tab = { id: number; path?: string; name: string; dirty: boolean; restored?: string };
+
+const left = leftTabs(); // unsaved tabs from a previous run, read once at launch
 
 /** One App per tab, all kept mounted so each keeps its own undo history; only the active one is shown. */
 export default function Shell() {
-  const [tabs, setTabs] = useState<Tab[]>([{ id: 0, name: "Untitled", dirty: false }]);
+  const [tabs, setTabs] = useState<Tab[]>([
+    { id: 0, name: "Untitled", dirty: false },
+    ...left.map((l) => ({ id: l.id, name: "Untitled", dirty: true, restored: l.json })),
+  ]);
   const [active, setActive] = useState(0);
-  const nextId = useRef(1);
+  const nextId = useRef(Math.max(0, ...left.map((l) => l.id)) + 1);
 
   const add = (path?: string) => {
     const id = nextId.current++;
@@ -22,6 +27,7 @@ export default function Shell() {
     const tab = tabs.find((x) => x.id === id);
     if (tab?.dirty && !(await confirmDiscard())) return;
     if (id === 0) { try { localStorage.removeItem(KEY); } catch { /* best-effort */ } setUnsaved(false); } // the autosave belonged to the first tab
+    clearTab(id);
     const i = tabs.findIndex((x) => x.id === id), rest = tabs.filter((x) => x.id !== id);
     if (!rest.length) return add(), setTabs((t) => t.filter((x) => x.id !== id));
     setTabs(rest);
@@ -41,7 +47,7 @@ export default function Shell() {
       </div>
       {tabs.map((t) => (
         <div key={t.id} className="tabhost" style={{ display: t.id === active ? "flex" : "none" }}>
-          <App active={t.id === active} primary={t.id === 0} openPath={t.path} onMeta={(n, d) => meta(t.id, n, d)} openTab={add} />
+          <App active={t.id === active} primary={t.id === 0} tabId={t.id} restored={t.restored} openPath={t.path} onMeta={(n, d) => meta(t.id, n, d)} openTab={add} />
         </div>
       ))}
     </div>
