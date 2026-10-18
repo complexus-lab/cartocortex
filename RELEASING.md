@@ -31,4 +31,11 @@ Check a signed build on a Mac that has never seen the app: `spctl -a -vv /Applic
 
 - **Windows signing.** Installers are unsigned, so SmartScreen warns on first run. Fixing it needs a code-signing certificate (an EV certificate removes the warning at once; a standard one earns reputation over time).
 - **Automatic updates.** Needs `tauri-plugin-updater`, a key pair from `npm run tauri signer generate`, the public key in `tauri.conf.json`, the private key as a secret, and an update check in the app.
-- **File associations.** Double-clicking a `.xmind` file would need `bundle.fileAssociations` plus code that opens the path the system passes in (arguments on Windows and Linux, an open-file event on macOS). The app has neither yet.
+
+## Opening files from the system
+
+`.xmind` files are registered with the app (`bundle.fileAssociations`), so double-click and *Open With* work once it is installed. Windows and Linux pass the file as a launch argument; macOS sends an open-file event, which also covers files dropped on the Dock icon. Each file opens in its own tab (a file already open is shown, not duplicated).
+
+Checked so far: launching the Linux debug build with a `.xmind` argument opens it in a new tab. Not checked: the macOS open-file event, the Windows association, and a second double-click while the app is already running (each launch starts a separate instance, as there is no single-instance handling yet).
+
+Only `.xmind` is registered. The app's own maps are plain `.json`, an extension too common to claim.
