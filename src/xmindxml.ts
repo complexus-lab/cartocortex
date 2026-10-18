@@ -126,6 +126,18 @@ export function boundTopics(t: Node, boundaries: { range?: string; title?: strin
   return out;
 }
 
+/**
+ * What an XMind structure on a single topic becomes: the layout it can have in the editor (an org chart or tree chart branch inside a
+ * logic chart or map), "drop" when it cannot be kept, undefined when it is the sheet's own structure and changes nothing.
+ */
+export function topicStructure(structureClass: string, rootClass: string): Node["layout"] | "drop" | undefined {
+  if (!structureClass || structureClass === rootClass) return undefined;
+  const sheet = layoutOf(rootClass), mine = layoutOf(structureClass);
+  const sideways = sheet === undefined || sheet === "left" || sheet === "map"; // the sheets that can hold branches with a structure of their own
+  const keeps = mine === "down" || mine === "up" || mine === "tree" || mine === "tree-left";
+  return sideways && keeps && EXACT[structureClass] === mine ? mine : "drop";
+}
+
 /** XMind writes a link to another topic as the href "xmind:#<topic id>". */
 export const topicHref = (href: string | undefined) => (href?.startsWith("xmind:#") ? href.slice(7) : undefined);
 
@@ -143,7 +155,8 @@ export function resolveTopicLinks(roots: Node[], ids: Map<string, string>) {
 }
 
 function topicFromXml(t: XNode, ids: Map<string, string>, rep: Report, bounds: string[], rootClass?: string): Node {
-  if (rootClass !== undefined && t.attrs["structure-class"] && t.attrs["structure-class"] !== rootClass) rep.add("structures set on individual topics dropped");
+  const own = rootClass === undefined ? undefined : topicStructure(t.attrs["structure-class"] ?? "", rootClass);
+  if (own === "drop") rep.add("structures set on individual topics dropped");
   const attached = kid(t, "children")?.children.find((c) => c.name === "topics" && (c.attrs.type ?? "attached") === "attached");
   const children = (attached?.children ?? []).filter((c) => c.name === "topic").map((c) => topicFromXml(c, ids, rep, bounds, rootClass ?? t.attrs["structure-class"] ?? ""));
   const subs = kid(t, "children")?.children.filter((c) => c.name === "topics") ?? [];
@@ -164,6 +177,7 @@ function topicFromXml(t: XNode, ids: Map<string, string>, rep: Report, bounds: s
     ...(t.attrs.branch === "folded" && children.length ? { collapsed: true } : {}),
     ...fromMarkers(markers),
   };
+  if (own && own !== "drop") node.layout = own;
   const boundaries = (kid(t, "boundaries")?.children ?? []).map((b) => ({ range: b.attrs.range, title: kid(b, "title")?.text }));
   bounds.push(...boundTopics(node, boundaries, rep));
   if (t.attrs.id) ids.set(t.attrs.id, node.id);

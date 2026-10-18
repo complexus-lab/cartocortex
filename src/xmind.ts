@@ -1,6 +1,6 @@
 import { Node, Rel, Summary, parentOf } from "./model";
 import { MARKER_OF_ICON, fromMarkers, lostMarkers, progressMarker } from "./task";
-import { boundTopics, layoutOf, noteStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
+import { boundTopics, layoutOf, noteStructure, topicStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
 import { Report } from "./importreport";
 
@@ -137,6 +137,7 @@ const toX = (n: Node, out: Out): XTopic => {
     id: n.id,
     class: "topic",
     title: n.text,
+    ...(n.layout && n.children.length ? { structureClass: STRUCTURE[n.layout] } : {}), // a branch with a structure of its own (the sheet's, on the root, is added by toSheet)
     // XMind has one href per topic: an outside link wins over a link to another topic.
     ...(n.link ? { href: n.link } : n.topicLink && out.known.has(n.topicLink) ? { href: `xmind:#${n.topicLink}` } : {}),
     ...(markersOf(n).length ? { markers: markersOf(n) } : {}),
@@ -201,8 +202,9 @@ const rangeOf = (r: string | undefined) => {
 };
 
 const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: Pictures, isRoot = false): Node => {
-  if (isRoot) acc.rootClass = t.structureClass;
-  else if (t.structureClass && t.structureClass !== acc.rootClass) rep.add("structures set on individual topics dropped");
+  if (isRoot) acc.rootClass = t.structureClass ?? "";
+  const own = isRoot ? undefined : topicStructure(t.structureClass ?? "", acc.rootClass ?? "");
+  if (own === "drop") rep.add("structures set on individual topics dropped");
   const children = (t.children?.attached ?? []).map((c) => fromX(c, ids, rep, acc, pic));
   // Floating topics hang off the central topic; elsewhere XMind has none and neither do we.
   const floating = t.children?.detached ?? [];
@@ -239,6 +241,7 @@ const fromX = (t: XTopic, ids: Map<string, string>, rep: Report, acc: Acc, pic: 
     ...(t.notes?.plain?.content ? { note: t.notes.plain.content } : {}),
     ...(t.branch === "folded" && children.length ? { collapsed: true } : {}),
   };
+  if (own && own !== "drop") node.layout = own;
   acc.bounds.push(...boundTopics(node, t.boundaries ?? [], rep));
   ids.set(t.id, node.id); // lets links between topics find their new targets
   return node;

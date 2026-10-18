@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { Node, addChild, layout, mk, neighbour } from "./model";
 import { addSummary, summaryGeo } from "./summary";
-import { exportXmind, importXmindSheets } from "./xmind";
+import { exportXmind, importXmindReport, importXmindSheets } from "./xmind";
 
 function chart(kind: Node["layout"]) {
   const [a, b, c, d] = [mk("a"), mk("b"), mk("c"), mk("d")];
@@ -380,4 +380,58 @@ test("row matrix: connectors and arrow keys", () => {
   expect([go(r.id, "down"), go(x.id, "down"), go(y.id, "up"), go(x.id, "up")]).toEqual([x.id, y.id, x.id, r.id]);
   expect([go(x.id, "right"), go(cells[0].id, "right"), go(cells[2].id, "right"), go(cells[1].id, "left"), go(cells[0].id, "left")]).toEqual([cells[0].id, cells[1].id, cells[2].id, cells[0].id, x.id]);
   expect([go(cells[0].id, "down"), go(sub[0].id, "down"), go(sub[1].id, "down"), go(sub[1].id, "up")]).toEqual([sub[0].id, sub[1].id, sub[1].id, cells[0].id]); // up from a stacked topic goes to its parent
+});
+
+// A topic can give its own branch a structure: an org chart or tree chart inside a logic chart or map.
+function branched(sub: Node["layout"], rootLayout: Node["layout"] = "map") {
+  let r: Node = { ...mk("root"), layout: rootLayout };
+  const [a, b, c] = [mk("A"), { ...mk("B"), layout: sub }, mk("C")];
+  r = addChild(addChild(addChild(r, r.id, a), r.id, b), r.id, c);
+  const kids = ["b1", "b2", "b3"].map(mk);
+  for (const k of kids) r = addChild(r, b.id, k);
+  r = addChild(r, kids[0].id, mk("b1x"));
+  r = addChild(r, a.id, mk("a1"));
+  return { r, a, b, c, kids };
+}
+
+const apart = (a: ReturnType<typeof layout>[number], b: ReturnType<typeof layout>[number]) =>
+  a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+
+test.each(["down", "up", "tree", "tree-left"] as const)("a topic's own %s structure lays its branch out on its own without collisions", (sub) => {
+  for (const rootLayout of ["map", "right", "left"] as const) {
+    const { r, b, kids } = branched(sub, rootLayout);
+    const boxes = layout(r), by = Object.fromEntries(boxes.map((x) => [x.id, x]));
+    expect(boxes).toHaveLength(9);
+    for (const x of boxes) for (const y of boxes) if (x.id < y.id) expect(apart(x, y), `${sub}/${rootLayout}: ${x.id} vs ${y.id}`).toBe(true);
+    const flows = { down: "down", up: "down", tree: "tree", "tree-left": "tree" } as const;
+    expect(kids.every((k) => by[k.id].flow === flows[sub])).toBe(true);
+    expect(by[b.id].flow).not.toBe(flows[sub]); // the topic itself stays in the sheet's structure
+    if (sub === "down") expect(kids.every((k) => by[k.id].y > by[b.id].y + by[b.id].h)).toBe(true); // below the topic
+    if (sub === "up") expect(kids.every((k) => by[k.id].y + by[k.id].h < by[b.id].y)).toBe(true); // above it
+  }
+});
+
+test("a branch with its own structure keeps working connectors and keys, also on the left of a map", () => {
+  const { r, b, kids } = branched("down", "left");
+  const boxes = layout(r), by = Object.fromEntries(boxes.map((x) => [x.id, x]));
+  expect(branchD(by[kids[0].id], by[b.id])).toMatch(/^M-?[\d.]+ -?[\d.]+C/); // an org chart connector from the topic's bottom
+  for (const k of kids) expect(branchD(by[k.id], by[b.id]).startsWith(`M${by[b.id].x + by[b.id].w / 2} ${by[b.id].y + by[b.id].h}C`)).toBe(true); // starting at the topic itself, also in the mirrored left half
+  expect(neighbour(r, boxes, b.id, "down")).toBe(kids[0].id); // into the branch
+  expect(neighbour(r, boxes, kids[0].id, "up")).toBe(b.id); // and back out
+  expect(neighbour(r, boxes, kids[0].id, "right")).toBe(kids[1].id);
+  const tree = branched("tree", "left"), tb = layout(tree.r);
+  expect(neighbour(tree.r, tb, tree.b.id, "right")).not.toBe(tree.kids[0].id); // a left-hand tree chart opens leftwards, not rightwards
+  expect(neighbour(tree.r, tb, tree.b.id, "left")).toBe(tree.kids[0].id);
+});
+
+test("a branch's structure survives XMind export and import, and a topic structure the sheet cannot hold is reported", async () => {
+  const { r, b } = branched("up");
+  const back = await importXmindReport(exportXmind(r));
+  expect(back.lost).toEqual([]);
+  expect(back.roots[0].children[1].layout).toBe("up");
+  expect(back.roots[0].children[0].layout).toBeUndefined();
+  void b;
+  const inChart = branched("up", "down"); // an org chart sheet cannot give a branch a different structure
+  const lost = (await importXmindReport(exportXmind(inChart.r))).lost;
+  expect(lost).toEqual(["structures set on individual topics dropped"]);
 });

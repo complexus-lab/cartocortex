@@ -13,7 +13,7 @@ export function edgePoint(b: Box, tx: number, ty: number) {
 
 /** Curve from parent `p` to child `b`, leaving on the side the child grows towards. */
 export function branchD(b: Box, p: Box): string {
-  if (b.flip) return mirrorPath(branchD(unflip(b), unflip(p)), b.flip); // drawn in the base structure, then mirrored
+  if (b.flip) return mirrorPath(branchD(unflip(b), unflip({ ...p, flip: b.flip })), b.flip); // drawn in the base structure, then mirrored; the parent may be a plain box that roots the mirrored branch
   if (b.flow === "down") {
     const x0 = p.x + p.w / 2, y0 = p.y + p.h, x1 = b.x + b.w / 2, my = (y0 + b.y) / 2;
     return `M${x0} ${y0} C${x0} ${my} ${x1} ${my} ${x1} ${b.y}`;
