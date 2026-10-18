@@ -105,7 +105,7 @@ export function fromWisemapping(src: string): Node[] {
   // The map's relationships, their ends remapped to our ids.
   const rels = kids(map, "relationship")
     .map((r) => ({ from: ids.get(attr(r, "srcTopicId") ?? ""), to: ids.get(attr(r, "destTopicId") ?? "") }))
-    .filter(({ from, to }) => !!from && !!to)
+    .filter((r): r is { from: string; to: string } => !!r.from && !!r.to)
     .map(({ from, to }) => ({ id: crypto.randomUUID(), from, to }));
   if (rels.length) node.rels = rels; // relationship lines live on the open sheet's root topic
   return [node];
