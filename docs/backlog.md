@@ -26,7 +26,9 @@ The standing advice from the field: use a library, never hand-roll a sequence CR
 
 **Open questions.** Library choice (benchmark on real sheets); tombstone growth and compaction; the on-disk persistence format for sheets and migration of existing files; undo/redo over a CRDT history; what the six format readers/writers read from and write into.
 
-**Deliberately out of scope for this item** (later entries, once the model is in): transport (relay or peer-to-peer), presence cursors, access control, end-to-end encryption.
+**Transport — studied.** How the edits travel during a live session is studied in `docs/realtime-collab-study.md`: a shared room identifier carried in a link (URL fragment, so no server sees it), WebRTC peer-to-peer data channels for the document itself, discovery through interchangeable signaling servers that only broker the initial handshake, and ICE/STUN/TURN to cross firewalls and NATs (a self-hostable TURN relay catches the roughly 10–20% of sessions where the direct path fails) — every component self-hostable, so the lab owns no single point of failure.
+
+**Deliberately out of scope for this item** (later entries, once the model is in): presence cursors, access control, end-to-end encryption.
 
 ## 2. WebAssembly deployment and the lab showcase site
 
