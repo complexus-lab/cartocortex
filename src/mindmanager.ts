@@ -85,6 +85,7 @@ function rootFromXml(x: XNode, ids: Map<string, string>, map: XNode | undefined)
   const node = topicFromXml(x, ids, 0);
   const sides = subTopicsOf(x).map((t) => (Number(attr(kid(t, "Offset"), "CX")) < 0 ? -1 : 1));
   const direction = growthOf(x, map);
+  // ponytail: a two-sided map splits its topics by count, so sides of unequal size in the file are not kept; needs a per-topic side in the model.
   if (direction === "Left") node.layout = "left"; // everything grows to the left, in order
   else if (direction !== "Right") {
     // Both sides (MindManager's default): a two-sided map grows its right half first, so right-side topics come first.
@@ -134,8 +135,14 @@ export function fromMindmanager(src: string): Node[] {
       : [];
   const roots = tops.map((x) => rootFromXml(x, ids, map));
   if (!roots.length) throw new Error("no topic found in this mind map");
-  const rels = map ? relsOf(map, ids) : [];
-  if (rels.length) roots[0].rels = rels; // relationship lines live on the open sheet's root topic
+  // Relationship lines live on the root topic of the sheet that holds both ends; one that spans two maps is dropped.
+  const sheet = new Map<string, Node>();
+  const own = (r: Node, n: Node) => (sheet.set(n.id, r), n.children.forEach((c) => own(r, c)));
+  roots.forEach((r) => own(r, r));
+  for (const rel of map ? relsOf(map, ids) : []) {
+    const r = sheet.get(rel.from);
+    if (r && r === sheet.get(rel.to)) (r.rels ??= []).push(rel);
+  }
   return roots;
 }
 
@@ -156,8 +163,13 @@ const escAttr = (s: string) => esc(s).replace(/\n/g, "&#xA;"); // a literal newl
 /** MindManager writes colours as "aarrggbb", alpha first. */
 const mmHex = (c: string | undefined) => (c && /^#[0-9a-f]{6}$/i.test(c) ? "ff" + c.slice(1).toLowerCase() : undefined);
 
-/** One Cartocortex topic -> one MindManager topic. */
-function topicToXml(n: Node, mm: Map<string, string>): string {
+const mmOf = (px: number) => Math.round((px / PX_PER_MM) * 100) / 100;
+
+/** The growth direction a sheet's structure is written as; structures MindManager lacks go out as its right-growing chart. */
+const growthTo = (l: Node["layout"]) => (l === "left" ? "Left" : l === "map" || l === "map-ccw" ? "LeftAndRight" : "Right");
+
+/** One Cartocortex topic -> one MindManager topic. `top` marks the central topic of a sheet, which carries the growth direction and the floating topics. */
+function topicToXml(n: Node, mm: Map<string, string>, top = false): string {
   const ink = mmHex(n.textColor);
   const inner = [`<ap:Text PlainText="${escAttr(n.text)}"${ink ? `><ap:Font Color="${ink}"/></ap:Text>` : "/>"}`];
   const fill = mmHex(n.color);
@@ -173,7 +185,12 @@ function topicToXml(n: Node, mm: Map<string, string>): string {
     inner.push(`<ap:Task${p}${g}/>`);
   }
   if (n.collapsed && n.children.length) inner.push(`<ap:TopicViewGroup ViewIndex="0"><ap:Collapsed Collapsed="true"/></ap:TopicViewGroup>`);
-  if (n.children.length) inner.push(`<ap:SubTopics>${n.children.map((c) => topicToXml(c, mm)).join("")}</ap:SubTopics>`);
+  const floats = top ? n.children.filter((c) => c.float) : [];
+  const kids = top ? n.children.filter((c) => !c.float) : n.children;
+  if (n.float && !top) inner.push(`<ap:Offset CX="${mmOf(n.float.x)}" CY="${mmOf(n.float.y)}"/>`);
+  if (kids.length) inner.push(`<ap:SubTopics>${kids.map((c) => topicToXml({ ...c, float: undefined }, mm)).join("")}</ap:SubTopics>`);
+  if (top) inner.push(`<ap:SubTopicsShape SubTopicsGrowthDirection="urn:mindjet:${growthTo(n.layout)}"/>`);
+  if (floats.length) inner.push(`<ap:FloatingTopics>${floats.map((c) => topicToXml(c, mm)).join("")}</ap:FloatingTopics>`);
   return `<ap:Topic OId="${mm.get(n.id)}">${inner.join("")}</ap:Topic>`;
 }
 
@@ -182,8 +199,9 @@ export function toMindmanager(roots: Node[]): Uint8Array {
   const mm = new Map<string, string>();
   const claim = (n: Node) => (mm.set(n.id, crypto.randomUUID()), n.children.forEach(claim));
   roots.forEach(claim); // every id first: a relationship may point at a topic that comes later
-  const oneTopics = roots.map((r) => `<ap:OneTopic>${topicToXml(r, mm)}</ap:OneTopic>`).join("");
-  const rels = ((roots[0]?.rels ?? []) as NonNullable<Node["rels"]>)
+  const oneTopics = roots.map((r) => `<ap:OneTopic>${topicToXml(r, mm, true)}</ap:OneTopic>`).join("");
+  const rels = roots
+    .flatMap((r) => r.rels ?? [])
     .filter((r) => mm.has(r.from) && mm.has(r.to))
     .map(
       (r) =>

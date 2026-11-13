@@ -109,3 +109,30 @@ test("MindManager colours: alpha first, #rrggbb kept, junk dropped", () => {
   const roots = fromMindmanager(`<Map>${one("00ffffff")}${one("ff0d9488")}${one("#12ab34")}${one("red")}</Map>`);
   expect(roots.map((r) => r.color)).toEqual([undefined, "#0d9488", "#12ab34", undefined]);
 });
+
+test("a round trip keeps each sheet's structure, floating topics and relationships", async () => {
+  const sheet = (text: string, layout?: Node["layout"]): Node => {
+    const r: Node = { ...mk(text), ...(layout ? { layout } : {}), children: [mk("a"), mk("b"), { ...mk("free"), float: { x: -378, y: 227 }, children: [mk("under")] }] };
+    r.rels = [{ id: crypto.randomUUID(), from: r.children[0].id, to: r.children[1].id }];
+    return r;
+  };
+  const back = await fromMindmanagerBytes(toMindmanager([sheet("Right"), sheet("Left", "left"), sheet("Both", "map")]));
+  expect(back.map((r) => r.layout)).toEqual([undefined, "left", "map"]);
+  for (const r of back) {
+    expect(r.children.map((c) => c.text)).toEqual(["a", "b", "free"]);
+    expect(r.children[2].float).toEqual({ x: -378, y: 227 });
+    expect(r.children[2].children[0].text).toBe("under");
+    expect(r.children[0].float).toBeUndefined();
+    expect(r.rels).toHaveLength(1); // on its own sheet, not all on the first
+    expect([r.rels![0].from, r.rels![0].to]).toEqual([r.children[0].id, r.children[1].id]);
+  }
+});
+
+test("a relationship read from the second map lands on the second sheet", () => {
+  const one = (id: string) => `<OneTopic><Topic OId="${id}"><Text PlainText="${id}"/><SubTopics><Topic OId="${id}a"><Text PlainText="a"/></Topic></SubTopics></Topic></OneTopic>`;
+  const rel = (from: string, to: string) => `<Relationship FromTopicID="${from}" ToTopicID="${to}"/>`;
+  const roots = fromMindmanager(`<Map>${one("m1")}${one("m2")}<Relationships>${rel("m2", "m2a")}${rel("m1", "m2a")}</Relationships></Map>`);
+  expect(roots[0].rels).toBeUndefined(); // the one spanning two maps is dropped
+  expect(roots[1].rels).toHaveLength(1);
+  expect(roots[1].rels![0].to).toBe(roots[1].children[0].id);
+});
