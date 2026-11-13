@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { importXmindSheets, zip } from "./xmind";
 import { layoutOf, parseXml, sheetsFromXml } from "./xmindxml";
+import { Report } from "./importreport";
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:xlink="http://www.w3.org/1999/xlink" version="2.0">
@@ -79,4 +80,14 @@ test("layoutOf covers the remaining XMind structure classes", () => {
     "org.xmind.ui.logic-chart.right": undefined,
   };
   for (const [cls, want] of Object.entries(cases)) expect(layoutOf(cls), cls).toBe(want);
+});
+
+test("an XMind 8 unbalanced map with a right-number gives each topic its side", () => {
+  const xml = (ext: string) => `<xmap-content><sheet><topic id="r" structure-class="org.xmind.ui.map.unbalanced"><title>R</title>
+    <children><topics type="attached">${["a", "b", "c", "d"].map((t) => `<topic id="${t}"><title>${t}</title></topic>`).join("")}</topics></children>${ext}</topic></sheet></xmap-content>`;
+  const rep = new Report();
+  const [root] = sheetsFromXml(xml(`<extensions><extension provider="org.xmind.ui.map.unbalanced"><content><right-number>1</right-number></content></extension></extensions>`), rep);
+  expect(root.children.map((c) => c.side)).toEqual(["right", "left", "left", "left"]);
+  expect(rep.lines()).toEqual([]);
+  expect(sheetsFromXml(xml(""))[0].children.map((c) => c.side)).toEqual([undefined, undefined, undefined, undefined]); // no count: the map balances itself
 });

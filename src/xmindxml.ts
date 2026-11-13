@@ -117,6 +117,19 @@ const EXACT: Record<string, string> = {
   "org.xmind.ui.fishbone.leftHeaded": "fish-left", "org.xmind.ui.map.anticlockwise": "map-ccw",
 };
 
+export const UNBALANCED = "org.xmind.ui.map.unbalanced";
+
+/**
+ * XMind's unbalanced map says how many of the central topic's subtopics sit on the right; the rest sit on the left. Gives each
+ * attached topic of `root` that side and tells whether it did: without a count XMind balances the map itself, and so do we.
+ */
+export function sidesFromRightNumber(root: Node, structureClass: string, rightNumber: unknown): boolean {
+  const n = Number(rightNumber);
+  if (structureClass !== UNBALANCED || rightNumber === undefined || rightNumber === "" || !Number.isInteger(n) || n < 0) return false;
+  root.children.filter((c) => !c.float).forEach((c, i) => (c.side = i < n ? "right" : "left"));
+  return true;
+}
+
 /** Records a structure XMind uses that opens as the nearest one here. An absent class is XMind's default and loses nothing. */
 export function noteStructure(structureClass: string, layout: Node["layout"], rep: Report) {
   if (!structureClass || EXACT[structureClass] === (layout ?? "right")) return;
@@ -212,7 +225,9 @@ export function sheetsFromXml(src: string, rep = new Report()): Node[] {
       const sc = t.attrs["structure-class"] ?? "";
       const layout = layoutOf(sc);
       if (layout) root.layout = layout;
-      noteStructure(sc, layout, rep);
+      const ext = (kid(t, "extensions")?.children ?? []).find((e) => e.attrs.provider === UNBALANCED);
+      const content = ext && kid(ext, "content");
+      if (!sidesFromRightNumber(root, sc, content ? kid(content, "right-number")?.text.trim() : undefined)) noteStructure(sc, layout, rep);
       rep.add("relationships dropped", kid(sheet, "relationships")?.children.length ?? 0);
       const title = kid(sheet, "title")?.text.trim();
       if (title) root.title = title;
