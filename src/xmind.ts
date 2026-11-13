@@ -1,6 +1,6 @@
-import { Node, Rel, Summary, parentOf } from "./model";
+import { Node, Rel, Summary, mapSides, parentOf } from "./model";
 import { MARKER_OF_ICON, fromMarkers, lostMarkers, progressMarker } from "./task";
-import { boundTopics, layoutOf, noteStructure, topicStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
+import { UNBALANCED, boundTopics, layoutOf, noteStructure, sidesFromRightNumber, topicStructure, resolveTopicLinks, sheetsFromXml, topicHref } from "./xmindxml";
 import { hex } from "./textstyle";
 import { Report } from "./importreport";
 
@@ -118,6 +118,7 @@ type XTopic = {
   image?: { src?: string; width?: number; height?: number };
   summaries?: { range?: string; topicId?: string }[]; boundaries?: { id?: string; range?: string; title?: string }[]; labels?: unknown[];
   notes?: { plain?: { content?: string }; html?: unknown };
+  extensions?: { provider?: string; content?: { name?: string; content?: string }[] }[];
 };
 
 const markersOf = (n: Node) => [
@@ -294,15 +295,30 @@ const STRUCTURE: Record<NonNullable<Node["layout"]>, string> = {
   "map-ccw": "org.xmind.ui.map.anticlockwise",
 };
 
+/** Whether a sheet is a two-sided map on which a topic was given its side: it goes out as XMind's unbalanced map. */
+const sidedMap = (root: Node) => (root.layout === "map" || root.layout === "map-ccw") && root.children.some((c) => c.side && !c.float);
+
+/**
+ * XMind's unbalanced map puts the first `right-number` subtopics on the right and the rest on the left, so the topics of such a
+ * sheet are written right side first. Done before anything else is gathered, so ranges and indexes count the written order.
+ */
+const inXmindOrder = (root: Node): Node => {
+  if (!sidedMap(root)) return root;
+  const [right, left] = mapSides(root);
+  return { ...root, children: [...right, ...left, ...root.children.filter((c) => c.float)] };
+};
+
 const toSheet = (root: Node, i: number, out: Out): XSheet => {
   const rels = (root.rels ?? []).filter((r) => out.known.has(r.from) && out.known.has(r.to));
+  const sided = sidedMap(root);
   return {
     id: crypto.randomUUID(),
     class: "sheet",
     title: root.title || root.text || `Sheet ${i + 1}`,
     rootTopic: {
       ...toX(root, out),
-      structureClass: STRUCTURE[root.layout ?? "right"],
+      structureClass: sided ? UNBALANCED : STRUCTURE[root.layout ?? "right"],
+      ...(sided ? { extensions: [{ provider: UNBALANCED, content: [{ name: "right-number", content: String(mapSides(root)[0].length) }] }] } : {}),
     },
     ...(rels.length ? { relationships: rels.map((r) => ({ id: r.id, class: "relationship", end1Id: r.from, end2Id: r.to })) } : {}),
   };
@@ -312,7 +328,7 @@ const idsOf = (n: Node): string[] => [n.id, ...n.children.flatMap(idsOf)];
 
 /** One XMind sheet per root topic. */
 export function exportXmind(roots: Node | Node[]): Uint8Array {
-  const list = Array.isArray(roots) ? roots : [roots];
+  const list = (Array.isArray(roots) ? roots : [roots]).map(inXmindOrder);
   const sums = new Map<string, Summary[]>();
   for (const r of list) for (const sm of r.summaries ?? []) {
     const parent = parentOf(r, sm.from);
@@ -359,7 +375,9 @@ export async function importXmindReport(bytes: Uint8Array): Promise<{ roots: Nod
       const sc = sh.rootTopic!.structureClass ?? "";
       const layout = layoutOf(sc); // matrix, timeline… stay the default logic chart
       if (layout) root.layout = layout;
-      noteStructure(sc, layout, rep);
+      const ext = (sh.rootTopic!.extensions ?? []).find((e) => e?.provider === UNBALANCED);
+      const rightNumber = Array.isArray(ext?.content) ? ext.content.find((c) => c?.name === "right-number")?.content : undefined;
+      if (!sidesFromRightNumber(root, sc, rightNumber)) noteStructure(sc, layout, rep);
       if (sh.title) root.title = sh.title;
       return root;
     });

@@ -53,3 +53,14 @@ test("boundaries, icons and fills survive a round trip", async () => {
   expect(r.bounds).toEqual([r.id, ra.id, rb.id]);
   expect(lost).toEqual([]);
 });
+
+test("a map whose topics were given a side goes out as XMind's unbalanced map and comes back with those sides", async () => {
+  const kid = (text: string, side?: "left" | "right"): Node => ({ ...mk(text), ...(side ? { side } : {}) });
+  const root: Node = { ...mk("R"), layout: "map", children: [kid("L1", "left"), kid("R1", "right"), kid("L2", "left"), kid("L3", "left"), { ...mk("free"), float: { x: 10, y: 20 } }] };
+  const { roots: [back], lost } = await importXmindReport(exportXmind([root]));
+  expect(lost).toEqual([]); // nothing approximated
+  expect(back.layout).toBe("map");
+  expect(back.children.map((c) => [c.text, c.side])).toEqual([["R1", "right"], ["L1", "left"], ["L2", "left"], ["L3", "left"], ["free", undefined]]); // right side first, as XMind counts them
+  const { roots: [auto] } = await importXmindReport(exportXmind([{ ...mk("R"), layout: "map", children: [mk("a"), mk("b"), mk("c")] }]));
+  expect(auto.children.map((c) => c.side)).toEqual([undefined, undefined, undefined]); // a map that balances itself stays that way
+});
