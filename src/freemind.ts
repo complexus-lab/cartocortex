@@ -1,4 +1,4 @@
-import { Node } from "./model";
+import { Node, mapSides } from "./model";
 import { decode, parseXml, resolveTopicLinks, XNode, escXml } from "./xmindxml";
 
 // Reader and writer for the FreeMind / Freeplane .mm format: plain XML, or the gzip FreeMind also writes
@@ -138,8 +138,7 @@ export function fromFreemind(src: string): Node[] {
     const lefts = sides.filter(Boolean).length;
     if (!lefts) return node;
     node.layout = lefts === sides.length ? "left" : "map";
-    // The two-sided map grows its first half to the right, so right-side topics come first.
-    node.children = node.children.filter((_, i) => !sides[i]).concat(node.children.filter((_, i) => sides[i]));
+    if (node.layout === "map") node.children.forEach((k, i) => (k.side = sides[i] ? "left" : "right")); // each topic keeps its side, in the file's order
     return node;
   });
   if (!roots.length) throw new Error("no topic found in this mind map");
@@ -185,12 +184,12 @@ function nodeToXml(n: Node, fm: Map<string, string>, side?: "left" | "right", ch
   return `<node${attrs}>${inner.join("")}${kids}</node>`;
 }
 
-/** Where a first-level topic sits, from the root's layout: everything left, or the first half right and the rest left. */
+/** Where a first-level topic sits, from the root's layout: everything left, or the sides the two-sided map draws them on. */
 const childSides = (root: Node): Array<"left" | "right" | undefined> => {
   if (root.layout === "left") return root.children.map(() => "left" as const);
-  if (root.layout === "map") {
-    const cut = Math.ceil(root.children.length / 2);
-    return root.children.map((_, i) => (i < cut ? ("right" as const) : ("left" as const)));
+  if (root.layout === "map" || root.layout === "map-ccw") {
+    const left = new Set(mapSides(root)[1]);
+    return root.children.map((k) => (k.float ? undefined : left.has(k) ? ("left" as const) : ("right" as const)));
   }
   return root.children.map(() => undefined);
 };

@@ -23,6 +23,7 @@ export type Node = {
   noteRuns?: Run[]; // the same for `note`
   shape?: Shape;
   float?: { x: number; y: number }; // top-level topics only: free-standing at this canvas position, no branch to the root
+  side?: "left" | "right"; // top-level topics of a two-sided map only: the side of the central topic it is drawn on; without it the map places the topic itself (see mapSides)
   // Document-level settings, only meaningful on the root node.
   layout?: "right" | "left" | "map" | "down" | "tree" | "fish" | "line" | "brace" | "matrix" | "matrix-row" | "vline" | "up" | "tree-left" | "brace-left" | "fish-left" | "map-ccw"; // the structure of the sheet (on its root) or of this topic's own branch (see SUB_STRUCTURES): logic chart (right or left), two-sided map, org chart, tree chart, fishbone, timeline, brace map, matrix
   theme?: string;
@@ -117,8 +118,8 @@ export const remove = (root: Node, id: string): Node =>
 export function moveTo(root: Node, id: string, target: string): Node {
   const moving = findNode(root, id);
   if (!moving || id === root.id || findNode(moving, target)) return root;
-  const { float, ...attached } = moving; // a topic dropped onto another one stops floating
-  void float;
+  const { float, side, ...attached } = moving; // a topic dropped onto another one stops floating, and forgets its side of the map
+  void float, side;
   return addChild(remove(root, id), target, attached);
 }
 
@@ -385,6 +386,22 @@ function timeline(root: Node, alternate = true): Raw[] {
 }
 
 /**
+ * The top-level topics of a two-sided map by the side they are drawn on, [right, left], each in document order. A topic with a `side`
+ * keeps it. The others are placed for balance: while no topic has a side, the first half on the side the map starts with (right, or
+ * left for the anticlockwise map); otherwise each, in turn, on the side that holds fewer.
+ */
+export function mapSides(root: Node): [Node[], Node[]] {
+  const kids = root.children.filter((c) => !c.float);
+  if (!kids.some((k) => k.side)) {
+    const cut = Math.ceil(kids.length / 2), a = kids.slice(0, cut), b = kids.slice(cut);
+    return root.layout === "map-ccw" ? [b, a] : [a, b];
+  }
+  let r = kids.filter((k) => k.side === "right").length, l = kids.filter((k) => k.side === "left").length;
+  const left = new Set(kids.filter((k) => (k.side ? k.side === "left" : r <= l ? (r++, false) : (l++, true))));
+  return [kids.filter((k) => !left.has(k)), kids.filter((k) => left.has(k))];
+}
+
+/**
  * "right": everything grows right. "map": top-level branches split between right and left of the root.
  * "down": org chart. "tree": indented tree chart. "fish": fishbone. "line": timeline.
  */
@@ -402,13 +419,15 @@ export function layout(root: Node): Box[] {
     out.push(...raw.map((b): Box => ({ ...b, side: 1, branch: -1, flow })));
   } else {
     // Sideways structures share one geometry: "right" and "brace" grow right, "left" grows left, "map" splits both ways.
-    const cut = root.collapsed ? kids.length : base === "map" ? Math.ceil(kids.length / 2) : base === "left" ? 0 : kids.length;
+    // `near` grows right and `far` left in the base geometry; the anticlockwise map is the mirror image, so its sides swap here and back in the flip.
+    const [r, l] = base === "map" ? mapSides(root) : [[], []];
+    const [near, far] = root.collapsed ? [kids, []] : base === "map" ? (flip?.h ? [l, r] : [r, l]) : base === "left" ? [[], kids] : [kids, []];
     const own = base === "right" || base === "left" || base === "map"; // only these hold topics with a structure of their own
-    const right = half({ ...root, children: kids.slice(0, cut) }, own);
+    const right = half({ ...root, children: near }, own);
     out.push(...right.map((b): Box => ({ side: 1, flow, ...b, branch: -1 })));
 
-    if (cut < kids.length) {
-      const left = half({ ...root, collapsed: false, children: kids.slice(cut) }, own);
+    if (far.length) {
+      const left = half({ ...root, collapsed: false, children: far }, own);
       const dy = right[0].y - left[0].y; // line the two roots up
       const rw = right[0].w;
       for (const b of left.slice(1)) {

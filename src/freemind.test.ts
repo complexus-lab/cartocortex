@@ -96,3 +96,11 @@ test("notes open from both FreeMind 0.9's hook and newer richcontent", () => {
   expect(roots[0].children[0].note).toBe("ancienne note");
   expect(roots[0].children[1].note).toBe("note riche");
 });
+
+test("a FreeMind map with unequal sides keeps each topic on its side, there and back", () => {
+  const [root] = fromFreemind(`<map version="1.0.1"><node TEXT="R">${["left", "right", "left", "left"].map((p, i) => `<node TEXT="t${i}" POSITION="${p}"/>`).join("")}</node></map>`);
+  expect(root.layout).toBe("map");
+  expect(root.children.map((c) => [c.text, c.side])).toEqual([["t0", "left"], ["t1", "right"], ["t2", "left"], ["t3", "left"]]); // the file's order
+  const [back] = fromFreemind(toFreemind([root]));
+  expect(back.children.map((c) => c.side)).toEqual(["left", "right", "left", "left"]);
+});

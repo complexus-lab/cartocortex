@@ -1,4 +1,4 @@
-import { Node } from "./model";
+import { mapSides, Node } from "./model";
 import { escXml as esc, escXmlAttr as escAttr, parseXml, xmlText, XNode } from "./xmindxml";
 import { unzip, zip } from "./xmind";
 import { Report } from "./importreport";
@@ -94,16 +94,15 @@ function topicFromXml(t: XNode, ids: Map<string, string>, depth: number, rep: Re
 /** The root topic: an ordinary topic plus the layout its subtopics' growth direction picks, and the map's floating topics. */
 function rootFromXml(x: XNode, ids: Map<string, string>, map: XNode | undefined, rep: Report): Node {
   const node = topicFromXml(x, ids, 0, rep);
-  const sides = subTopicsOf(x).map((t) => (Number(attr(kid(t, "Offset"), "CX")) < 0 ? -1 : 1));
   const direction = growthOf(x, map);
-  // ponytail: a two-sided map splits its topics by count, so sides of unequal size in the file are not kept; needs a per-topic side in the model.
   if (direction === "Left") node.layout = "left"; // everything grows to the left, in order
   else if (direction !== "Right") {
-    // Both sides (MindManager's default): a two-sided map grows its right half first, so right-side topics come first.
+    // Both sides (MindManager's default). A topic with an offset keeps the side it points to; one without is placed by the map itself.
     node.layout = "map";
-    node.children = node.children.filter((_, i) => sides[i] >= 0).concat(node.children.filter((_, i) => sides[i] < 0));
-    const lefts = sides.filter((s) => s < 0).length;
-    if (lefts && lefts !== Math.floor(sides.length / 2)) rep.add("maps with unequal sides opened split evenly");
+    subTopicsOf(x).forEach((t, i) => {
+      const cx = Number(attr(kid(t, "Offset"), "CX"));
+      if (cx) node.children[i].side = cx < 0 ? "left" : "right";
+    });
   }
   for (const f of kids(kid(x, "FloatingTopics"), "Topic")) {
     const n = topicFromXml(f, ids, 1, rep);
@@ -184,7 +183,7 @@ const mmOf = (px: number) => Math.round((px / PX_PER_MM) * 100) / 100;
 const growthTo = (l: Node["layout"]) => (l === "left" ? "Left" : l === "map" || l === "map-ccw" ? "LeftAndRight" : "Right");
 
 /** One Cartocortex topic -> one MindManager topic. `top` marks the central topic of a sheet, which carries the growth direction and the floating topics. */
-function topicToXml(n: Node, mm: Map<string, string>, top = false): string {
+function topicToXml(n: Node, mm: Map<string, string>, top = false, cx = 0): string {
   const ink = mmHex(n.textColor);
   const inner = [`<ap:Text PlainText="${escAttr(n.text)}"${ink ? `><ap:Font Color="${ink}"/></ap:Text>` : "/>"}`];
   const fill = mmHex(n.color);
@@ -201,9 +200,13 @@ function topicToXml(n: Node, mm: Map<string, string>, top = false): string {
   }
   if (n.collapsed && n.children.length) inner.push(`<ap:TopicViewGroup ViewIndex="0"><ap:Collapsed Collapsed="true"/></ap:TopicViewGroup>`);
   const floats = top ? n.children.filter((c) => c.float) : [];
+  // A topic that was given its side of a two-sided map says so with the sign of a token offset, which is what the reader goes by.
+  const sided = top && (n.layout === "map" || n.layout === "map-ccw") && n.children.some((c) => c.side);
+  const lefts = new Set(sided ? mapSides(n)[1] : []);
   const kids = top ? n.children.filter((c) => !c.float) : n.children;
   if (n.float && !top) inner.push(`<ap:Offset CX="${mmOf(n.float.x)}" CY="${mmOf(n.float.y)}"/>`);
-  if (kids.length) inner.push(`<ap:SubTopics>${kids.map((c) => topicToXml({ ...c, float: undefined }, mm)).join("")}</ap:SubTopics>`);
+  else if (cx) inner.push(`<ap:Offset CX="${cx}" CY="0"/>`);
+  if (kids.length) inner.push(`<ap:SubTopics>${kids.map((c) => topicToXml({ ...c, float: undefined }, mm, false, sided ? (lefts.has(c) ? -1 : 1) : 0)).join("")}</ap:SubTopics>`);
   if (top) inner.push(`<ap:SubTopicsShape SubTopicsGrowthDirection="urn:mindjet:${growthTo(n.layout)}"/>`);
   if (floats.length) inner.push(`<ap:FloatingTopics>${floats.map((c) => topicToXml(c, mm)).join("")}</ap:FloatingTopics>`);
   return `<ap:Topic OId="${mm.get(n.id)}">${inner.join("")}</ap:Topic>`;

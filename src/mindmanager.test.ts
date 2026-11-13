@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mk, Node } from "./model";
+import { layout, mk, Node } from "./model";
 import { fromMindmanager, fromMindmanagerBytes, fromMindmanagerReport, toMindmanager } from "./mindmanager";
 import { zip } from "./xmind";
 
@@ -41,12 +41,13 @@ test("reads a MindManager document", () => {
   expect(root.progress).toBe(40);
   expect(root.collapsed).toBe(true);
   expect(root.layout).toBe("map"); // MindManager grows both sides by default
-  expect(root.children.map((c) => c.text)).toEqual(["Right", "Left", "Floating"]); // the map grows right first; floating topics follow
-  expect(root.children[1].children.map((c) => c.text)).toEqual(["Deep", "Callout"]); // a callout opens as a plain child
+  expect(root.children.map((c) => c.text)).toEqual(["Left", "Right", "Floating"]); // the file's order; floating topics follow
+  expect(root.children.map((c) => c.side)).toEqual(["left", "right", undefined]); // each topic keeps the side its offset points to
+  expect(root.children[0].children.map((c) => c.text)).toEqual(["Deep", "Callout"]); // a callout opens as a plain child
   expect(root.children[2].float).toEqual({ x: -378, y: 227 }); // millimetres -> pixels
   expect(root.rels).toHaveLength(1);
-  expect(root.rels![0].from).toBe(root.children[1].id); // remapped to our topic ids
-  expect(root.rels![0].to).toBe(root.children[0].id);
+  expect(root.rels![0].from).toBe(root.children[0].id); // remapped to our topic ids
+  expect(root.rels![0].to).toBe(root.children[1].id);
 });
 
 test("reads the simplified schema some tools write", () => {
@@ -148,7 +149,7 @@ test("the import reports what it drops, and only keeps links that can be opened"
   expect(roots[0].children.map((c) => c.link)).toEqual([undefined, undefined, undefined, "https://example.com/a b", undefined]);
   expect(lost).toEqual([
     "links to other topics dropped", "2 × links that are not web or mail addresses dropped", "pictures dropped", "boundaries dropped",
-    "icons with no counterpart dropped", "maps with unequal sides opened split evenly", "relationships dropped",
+    "icons with no counterpart dropped", "relationships dropped",
   ]);
   expect((await fromMindmanagerReport(toMindmanager([mk("clean")]))).lost).toEqual([]);
 });
@@ -164,4 +165,18 @@ test("tabs and line breaks survive in attributes, and characters XML forbids are
   const [r] = await fromMindmanagerBytes(toMindmanager([{ ...mk("a\tb\r\nc\u000bd\u0000"), note: "x\ty" }]));
   expect(r.text).toBe("a\tb\r\ncd");
   expect(r.note).toBe("x\ty");
+});
+
+test("a two-sided map with unequal sides keeps each topic on its side", async () => {
+  const doc = `<Map><OneTopic><Topic><Text PlainText="R"/><SubTopics>${["L1:-9", "R1:9", "L2:-9", "L3:-9", "L4:-9"]
+    .map((t) => `<Topic><Text PlainText="${t.split(":")[0]}"/><Offset CX="${t.split(":")[1]}"/></Topic>`).join("")}</SubTopics></Topic></OneTopic></Map>`;
+  const sidesOf = (r: Node) => layout(r).filter((b) => b.depth === 1).map((b) => `${r.children.find((c) => c.id === b.id)!.text}${b.side === 1 ? ">" : "<"}`).sort();
+  const [root] = fromMindmanager(doc);
+  expect(root.children.map((c) => c.text)).toEqual(["L1", "R1", "L2", "L3", "L4"]); // the file's order
+  expect(sidesOf(root)).toEqual(["L1<", "L2<", "L3<", "L4<", "R1>"]);
+  const [back] = await fromMindmanagerBytes(toMindmanager([root]));
+  expect(back.children.map((c) => c.side)).toEqual(["left", "right", "left", "left", "left"]);
+  expect(sidesOf(back)).toEqual(sidesOf(root));
+  const [auto] = await fromMindmanagerBytes(toMindmanager([{ ...mk("R"), layout: "map", children: [mk("a"), mk("b"), mk("c")] }]));
+  expect(auto.children.map((c) => c.side)).toEqual([undefined, undefined, undefined]); // a map that balances itself stays that way
 });

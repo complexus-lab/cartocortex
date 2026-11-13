@@ -923,6 +923,16 @@ export default function App({ active, primary, tabId, restored, openPath, onMeta
                 <button key={id} className={(selNode.shape ?? "round") === id ? "on" : ""} onClick={() => setNode({ shape: id })}>{label}</button>
               ))}
             </div>
+            {(s.root.layout === "map" || s.root.layout === "map-ccw") && !selNode.float && s.root.children.some((c) => c.id === selNode.id) && (
+              <>
+                <label>Side of the map</label>
+                <div className="row">
+                  <button className={!selNode.side ? "on" : ""} title="Let the map place this topic to keep its two sides balanced" onClick={() => setNode({ side: undefined })}>Auto</button>
+                  <button className={selNode.side === "left" ? "on" : ""} onClick={() => setNode({ side: "left" })}>← Left</button>
+                  <button className={selNode.side === "right" ? "on" : ""} onClick={() => setNode({ side: "right" })}>Right →</button>
+                </div>
+              </>
+            )}
             {["right", "left", "map", undefined].includes(s.root.layout) && selNode.id !== s.root.id && selNode.children.length > 0 && (
               <>
                 <label>Branch structure</label>
