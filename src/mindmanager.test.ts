@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { mk, Node } from "./model";
-import { fromMindmanager, fromMindmanagerBytes, toMindmanager } from "./mindmanager";
+import { fromMindmanager, fromMindmanagerBytes, fromMindmanagerReport, toMindmanager } from "./mindmanager";
 import { zip } from "./xmind";
 
 const DOC = `<?xml version="1.0" encoding="UTF-8"?>
@@ -108,4 +108,60 @@ test("MindManager colours: alpha first, #rrggbb kept, junk dropped", () => {
   const one = (v: string) => `<OneTopic><Topic><Text PlainText="t"/><Color FillColor="${v}"/></Topic></OneTopic>`;
   const roots = fromMindmanager(`<Map>${one("00ffffff")}${one("ff0d9488")}${one("#12ab34")}${one("red")}</Map>`);
   expect(roots.map((r) => r.color)).toEqual([undefined, "#0d9488", "#12ab34", undefined]);
+});
+
+test("a round trip keeps each sheet's structure, floating topics and relationships", async () => {
+  const sheet = (text: string, layout?: Node["layout"]): Node => {
+    const r: Node = { ...mk(text), ...(layout ? { layout } : {}), children: [mk("a"), mk("b"), { ...mk("free"), float: { x: -378, y: 227 }, children: [mk("under")] }] };
+    r.rels = [{ id: crypto.randomUUID(), from: r.children[0].id, to: r.children[1].id }];
+    return r;
+  };
+  const back = await fromMindmanagerBytes(toMindmanager([sheet("Right"), sheet("Left", "left"), sheet("Both", "map")]));
+  expect(back.map((r) => r.layout)).toEqual([undefined, "left", "map"]);
+  for (const r of back) {
+    expect(r.children.map((c) => c.text)).toEqual(["a", "b", "free"]);
+    expect(r.children[2].float).toEqual({ x: -378, y: 227 });
+    expect(r.children[2].children[0].text).toBe("under");
+    expect(r.children[0].float).toBeUndefined();
+    expect(r.rels).toHaveLength(1); // on its own sheet, not all on the first
+    expect([r.rels![0].from, r.rels![0].to]).toEqual([r.children[0].id, r.children[1].id]);
+  }
+});
+
+test("a relationship read from the second map lands on the second sheet", () => {
+  const one = (id: string) => `<OneTopic><Topic OId="${id}"><Text PlainText="${id}"/><SubTopics><Topic OId="${id}a"><Text PlainText="a"/></Topic></SubTopics></Topic></OneTopic>`;
+  const rel = (from: string, to: string) => `<Relationship FromTopicID="${from}" ToTopicID="${to}"/>`;
+  const roots = fromMindmanager(`<Map>${one("m1")}${one("m2")}<Relationships>${rel("m2", "m2a")}${rel("m1", "m2a")}</Relationships></Map>`);
+  expect(roots[0].rels).toBeUndefined(); // the one spanning two maps is dropped
+  expect(roots[1].rels).toHaveLength(1);
+  expect(roots[1].rels![0].to).toBe(roots[1].children[0].id);
+});
+
+test("the import reports what it drops, and only keeps links that can be opened", async () => {
+  const t = (inner: string) => `<Topic><Text PlainText="t"/>${inner}</Topic>`;
+  const doc = `<Map><OneTopic><Topic OId="r"><Text PlainText="R"/><SubTopics>
+    ${t(`<Hyperlink Url="#xpointer(x)"/>`)}${t(`<Hyperlink Url="javascript:alert(1)"/>`)}${t(`<Hyperlink Url="..\\docs\\plan.docx"/>`)}
+    ${t(`<Hyperlink Url="https://example.com/a b"/><OneImage/><OneBoundary/><Icon IconType="urn:mindjet:Smiley"/>`)}
+    ${t(`<Offset CX="-5"/>`)}
+  </SubTopics></Topic></OneTopic><Relationships><Relationship FromTopicID="r" ToTopicID="gone"/></Relationships></Map>`;
+  const { roots, lost } = await fromMindmanagerReport(new TextEncoder().encode(doc));
+  expect(roots[0].children.map((c) => c.link)).toEqual([undefined, undefined, undefined, "https://example.com/a b", undefined]);
+  expect(lost).toEqual([
+    "links to other topics dropped", "2 × links that are not web or mail addresses dropped", "pictures dropped", "boundaries dropped",
+    "icons with no counterpart dropped", "maps with unequal sides opened split evenly", "relationships dropped",
+  ]);
+  expect((await fromMindmanagerReport(toMindmanager([mk("clean")]))).lost).toEqual([]);
+});
+
+test("flat XML in UTF-16 opens, with or without a byte order mark", async () => {
+  const xml = `<?xml version="1.0" encoding="UTF-16"?><Map><OneTopic><Topic><Text PlainText="Café"/></Topic></OneTopic></Map>`;
+  const units = (le: boolean) => [...xml].flatMap((c) => (le ? [c.charCodeAt(0) & 255, c.charCodeAt(0) >> 8] : [c.charCodeAt(0) >> 8, c.charCodeAt(0) & 255]));
+  for (const bytes of [[0xff, 0xfe, ...units(true)], [0xfe, 0xff, ...units(false)], units(true), units(false)])
+    expect((await fromMindmanagerBytes(new Uint8Array(bytes)))[0].text).toBe("Café");
+});
+
+test("tabs and line breaks survive in attributes, and characters XML forbids are left out", async () => {
+  const [r] = await fromMindmanagerBytes(toMindmanager([{ ...mk("a\tb\r\nc\u000bd\u0000"), note: "x\ty" }]));
+  expect(r.text).toBe("a\tb\r\ncd");
+  expect(r.note).toBe("x\ty");
 });

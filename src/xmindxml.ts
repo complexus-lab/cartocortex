@@ -18,6 +18,20 @@ export const decode = (s: string) =>
     return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[e.toLowerCase()] ?? m;
   });
 
+/** Text for XML content or an attribute value: the five predefined entities, and the control characters XML 1.0 forbids removed. */
+export const escXml = (s: string) =>
+  s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
+
+/** The same for an attribute value that must keep its tabs and line breaks: a parser turns literal ones into spaces. */
+export const escXmlAttr = (s: string) => escXml(s).replace(/[\t\n\r]/g, (c) => `&#x${c.charCodeAt(0).toString(16).toUpperCase()};`);
+
+/** The text of an XML file: UTF-16 when a byte order mark or the first "<" says so, otherwise UTF-8. */
+export function xmlText(b: Uint8Array): string {
+  const le = (b[0] === 0xff && b[1] === 0xfe) || (b[0] === 0x3c && b[1] === 0);
+  const be = (b[0] === 0xfe && b[1] === 0xff) || (b[0] === 0 && b[1] === 0x3c);
+  return new TextDecoder(le ? "utf-16le" : be ? "utf-16be" : "utf-8").decode(b);
+}
+
 export function parseXml(src: string): XNode {
   if (/<!DOCTYPE/i.test(src)) throw new Error("XML with a DOCTYPE is not supported");
   const root: XNode = { name: "", attrs: {}, children: [], text: "" };

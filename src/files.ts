@@ -1,6 +1,6 @@
 import { Book, bookJson, parseBook } from "./book";
 import { fromFreemindBytes, toFreemind } from "./freemind";
-import { fromMindmanagerBytes, toMindmanager } from "./mindmanager";
+import { fromMindmanagerReport, toMindmanager } from "./mindmanager";
 import { Node, toMarkdown } from "./model";
 import { fromMarkdown, fromOpml, toOpml } from "./outline-io";
 import { exportXmind, importXmindReport } from "./xmind";
@@ -29,14 +29,14 @@ export function docBytes(path: string, roots: Node[], cur: number): Uint8Array {
   return text(bookJson(roots, cur, true));
 }
 
-/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind or MindManager map gives one sheet per root topic. `lost` lists what an XMind import could not carry over. */
+/** The document in a file, by its extension. A Markdown or OPML file gives one sheet, named after the file if it has no single top topic; a FreeMind or MindManager map gives one sheet per root topic. `lost` lists what an XMind or MindManager import could not carry over. */
 export async function parseDocReport(name: string, bytes: Uint8Array): Promise<Book & { lost: string[] }> {
   const ext = extOf(name), text = () => new TextDecoder().decode(bytes);
   if (ext === "xmind") return { ...(await importXmindReport(bytes)), cur: 0 };
   if (ext === "opml") return { roots: [fromOpml(text())], cur: 0, lost: [] };
   if (ext === "md" || ext === "markdown" || ext === "txt") return { roots: [fromMarkdown(text(), baseName(name).replace(/\.[^.]*$/, ""))], cur: 0, lost: [] };
   if (ext === "mm") return { roots: await fromFreemindBytes(bytes), cur: 0, lost: [] };
-  if (ext === "mmap") return { roots: await fromMindmanagerBytes(bytes), cur: 0, lost: [] };
+  if (ext === "mmap") return { ...(await fromMindmanagerReport(bytes)), cur: 0 };
   return { ...parseBook(text()), lost: [] };
 }
 
