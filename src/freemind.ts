@@ -1,5 +1,5 @@
 import { Node } from "./model";
-import { decode, parseXml, resolveTopicLinks, XNode } from "./xmindxml";
+import { decode, parseXml, resolveTopicLinks, XNode, escXml } from "./xmindxml";
 
 // Reader and writer for the FreeMind / Freeplane .mm format: plain XML, or the gzip FreeMind also writes
 // (magic bytes 1f 8b). Reading reuses the strict parser from the old .xmind reader (no DOCTYPE, predefined
@@ -154,7 +154,7 @@ export async function fromFreemindBytes(bytes: Uint8Array): Promise<Node[]> {
   return fromFreemind(text);
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
+const esc = escXml;
 
 const hex = (c: string | undefined) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c : undefined);
 

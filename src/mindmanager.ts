@@ -1,6 +1,8 @@
 import { Node } from "./model";
-import { parseXml, XNode } from "./xmindxml";
+import { escXml as esc, escXmlAttr as escAttr, parseXml, xmlText, XNode } from "./xmindxml";
 import { unzip, zip } from "./xmind";
+import { Report } from "./importreport";
+import { normalizeUrl } from "./links";
 
 // Reader and writer for MindManager's .mmap format: a zip holding Document.xml (MindManager X5 and
 // later), or the flat XML of the MindManager 10 for Mac builds that did not zip. Reading reuses the
@@ -45,18 +47,27 @@ const subTopicsOf = (t: XNode): XNode[] => [...kids(kid(t, "SubTopics"), "Topic"
 const PX_PER_MM = 96 / 25.4;
 
 /** One MindManager topic -> one Cartocortex topic. `depth` 0 is the central topic of a map. */
-function topicFromXml(t: XNode, ids: Map<string, string>, depth: number): Node {
-  const children = subTopicsOf(t).map((c) => topicFromXml(c, ids, depth + 1));
+function topicFromXml(t: XNode, ids: Map<string, string>, depth: number, rep: Report): Node {
+  const children = subTopicsOf(t).map((c) => topicFromXml(c, ids, depth + 1, rep));
   // The floating topics of the central topic float on the canvas; those of any other topic are its callouts, which open as plain children.
-  if (depth > 0) children.push(...kids(kid(t, "FloatingTopics"), "Topic").map((c) => topicFromXml(c, ids, depth + 1)));
+  if (depth > 0) {
+    const callouts = kids(kid(t, "FloatingTopics"), "Topic");
+    rep.add("callouts opened as subtopics", callouts.length);
+    children.push(...callouts.map((c) => topicFromXml(c, ids, depth + 1, rep)));
+  }
+  rep.add("pictures dropped", t.children.filter((c) => /Image$/.test(c.name)).length);
+  rep.add("boundaries dropped", t.children.filter((c) => /Boundary$/.test(c.name)).length);
   const textEl = kid(t, "Text");
   const text = attr(textEl, "PlainText") ?? attr(t, "Text") ?? "";
   const note = (attr(kid(kid(t, "NotesGroup"), "NotesXhtmlData"), "PreviewPlainText") ?? kid(t, "Notes")?.text.trim() ?? "").trim();
   const url = attr(kid(t, "Hyperlink"), "Url");
-  const link = url && !url.startsWith("#") ? url : undefined; // a "#xpointer(...)" Url points at another topic: dropped
+  // A "#xpointer(...)" Url points at another topic, and anything but a web or mail address (a file path, javascript:) could not be opened: dropped.
+  const link = url && /^(https?:\/\/|mailto:)/i.test(url.trim()) && normalizeUrl(url) ? url.trim() : undefined;
+  if (url && !link) rep.add(url.startsWith("#") ? "links to other topics dropped" : "links that are not web or mail addresses dropped");
   const task = kid(t, "Task");
   const icons = [...kids(kid(kid(t, "IconsGroup"), "Icons"), "Icon"), ...kids(t, "Icon")];
   const priority = prioOf(attr(task, "TaskPriority")) ?? icons.map((i) => prioOf(attr(i, "IconType"))).find((p) => p !== undefined);
+  rep.add("icons with no counterpart dropped", icons.filter((i) => prioOf(attr(i, "IconType")) === undefined).length);
   const progress = progressOf(attr(task, "TaskPercentage"));
   const colorEl = kid(t, "Color");
   const fill = mmColor(attr(colorEl, "FillColor") ?? attr(colorEl, "Value"));
@@ -81,8 +92,8 @@ function topicFromXml(t: XNode, ids: Map<string, string>, depth: number): Node {
 }
 
 /** The root topic: an ordinary topic plus the layout its subtopics' growth direction picks, and the map's floating topics. */
-function rootFromXml(x: XNode, ids: Map<string, string>, map: XNode | undefined): Node {
-  const node = topicFromXml(x, ids, 0);
+function rootFromXml(x: XNode, ids: Map<string, string>, map: XNode | undefined, rep: Report): Node {
+  const node = topicFromXml(x, ids, 0, rep);
   const sides = subTopicsOf(x).map((t) => (Number(attr(kid(t, "Offset"), "CX")) < 0 ? -1 : 1));
   const direction = growthOf(x, map);
   // ponytail: a two-sided map splits its topics by count, so sides of unequal size in the file are not kept; needs a per-topic side in the model.
@@ -91,9 +102,11 @@ function rootFromXml(x: XNode, ids: Map<string, string>, map: XNode | undefined)
     // Both sides (MindManager's default): a two-sided map grows its right half first, so right-side topics come first.
     node.layout = "map";
     node.children = node.children.filter((_, i) => sides[i] >= 0).concat(node.children.filter((_, i) => sides[i] < 0));
+    const lefts = sides.filter((s) => s < 0).length;
+    if (lefts && lefts !== Math.floor(sides.length / 2)) rep.add("maps with unequal sides opened split evenly");
   }
   for (const f of kids(kid(x, "FloatingTopics"), "Topic")) {
-    const n = topicFromXml(f, ids, 1);
+    const n = topicFromXml(f, ids, 1, rep);
     const off = kid(f, "Offset");
     n.float = { x: Math.round((Number(attr(off, "CX")) || 0) * PX_PER_MM), y: Math.round((Number(attr(off, "CY")) || 0) * PX_PER_MM) };
     node.children.push(n);
@@ -109,7 +122,7 @@ function growthOf(x: XNode, map: XNode | undefined): string {
 }
 
 /** The map's relationships, their ends remapped to our topic ids; one pointing at a missing topic is dropped. */
-function relsOf(map: XNode, ids: Map<string, string>): NonNullable<Node["rels"]> {
+function relsOf(map: XNode, ids: Map<string, string>, rep: Report): NonNullable<Node["rels"]> {
   const out: NonNullable<Node["rels"]> = [];
   for (const rel of kids(kid(map, "Relationships"), "Relationship")) {
     const end = (index: string) => {
@@ -119,12 +132,13 @@ function relsOf(map: XNode, ids: Map<string, string>): NonNullable<Node["rels"]>
     const from = ids.get(attr(rel, "FromTopicID") ?? "") ?? end("0");
     const to = ids.get(attr(rel, "ToTopicID") ?? "") ?? end("1");
     if (from && to) out.push({ id: crypto.randomUUID(), from, to });
+    else rep.add("relationships dropped");
   }
   return out;
 }
 
 /** The root topics of a .mmap map. The growth direction of the central topic opens as a logic (left), logic (right) or two-sided (map) chart. */
-export function fromMindmanager(src: string): Node[] {
+export function fromMindmanager(src: string, rep = new Report()): Node[] {
   const root = parseXml(src); // throws on DOCTYPE, on anything but plain XML
   const map = root.name === "Map" ? root : undefined;
   const ids = new Map<string, string>();
@@ -133,32 +147,33 @@ export function fromMindmanager(src: string): Node[] {
     : root.name === "Topic"
       ? [root]
       : [];
-  const roots = tops.map((x) => rootFromXml(x, ids, map));
+  const roots = tops.map((x) => rootFromXml(x, ids, map, rep));
   if (!roots.length) throw new Error("no topic found in this mind map");
   // Relationship lines live on the root topic of the sheet that holds both ends; one that spans two maps is dropped.
   const sheet = new Map<string, Node>();
   const own = (r: Node, n: Node) => (sheet.set(n.id, r), n.children.forEach((c) => own(r, c)));
   roots.forEach((r) => own(r, r));
-  for (const rel of map ? relsOf(map, ids) : []) {
+  for (const rel of map ? relsOf(map, ids, rep) : []) {
     const r = sheet.get(rel.from);
     if (r && r === sheet.get(rel.to)) (r.rels ??= []).push(rel);
+    else rep.add("relationships dropped");
   }
   return roots;
 }
 
-/** A .mmap file: a zip holding Document.xml (magic bytes "PK"), or flat XML. */
-export async function fromMindmanagerBytes(bytes: Uint8Array): Promise<Node[]> {
+/** A .mmap file: a zip holding Document.xml (magic bytes "PK"), or flat XML; UTF-8 or UTF-16. `lost` lists what could not be carried over. */
+export async function fromMindmanagerReport(bytes: Uint8Array): Promise<{ roots: Node[]; lost: string[] }> {
+  const rep = new Report();
+  let xml = bytes; // the flat XML of MindManager 10 for Mac
   if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
-    const files = await unzip(bytes);
-    const doc = [...files.entries()].find(([name]) => name.toLowerCase() === "document.xml");
+    const doc = [...(await unzip(bytes)).entries()].find(([name]) => name.toLowerCase() === "document.xml");
     if (!doc) throw new Error("no Document.xml in this MindManager file");
-    return fromMindmanager(new TextDecoder().decode(doc[1]));
+    xml = doc[1];
   }
-  return fromMindmanager(new TextDecoder().decode(bytes)); // the flat XML of MindManager 10 for Mac
+  return { roots: fromMindmanager(xmlText(xml), rep), lost: rep.lines() };
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
-const escAttr = (s: string) => esc(s).replace(/\n/g, "&#xA;"); // a literal newline in an attribute would read back as a space
+export const fromMindmanagerBytes = async (bytes: Uint8Array): Promise<Node[]> => (await fromMindmanagerReport(bytes)).roots;
 
 /** MindManager writes colours as "aarrggbb", alpha first. */
 const mmHex = (c: string | undefined) => (c && /^#[0-9a-f]{6}$/i.test(c) ? "ff" + c.slice(1).toLowerCase() : undefined);

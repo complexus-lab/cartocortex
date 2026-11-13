@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { mk, Node } from "./model";
-import { fromMindmanager, fromMindmanagerBytes, toMindmanager } from "./mindmanager";
+import { fromMindmanager, fromMindmanagerBytes, fromMindmanagerReport, toMindmanager } from "./mindmanager";
 import { zip } from "./xmind";
 
 const DOC = `<?xml version="1.0" encoding="UTF-8"?>
@@ -135,4 +135,33 @@ test("a relationship read from the second map lands on the second sheet", () => 
   expect(roots[0].rels).toBeUndefined(); // the one spanning two maps is dropped
   expect(roots[1].rels).toHaveLength(1);
   expect(roots[1].rels![0].to).toBe(roots[1].children[0].id);
+});
+
+test("the import reports what it drops, and only keeps links that can be opened", async () => {
+  const t = (inner: string) => `<Topic><Text PlainText="t"/>${inner}</Topic>`;
+  const doc = `<Map><OneTopic><Topic OId="r"><Text PlainText="R"/><SubTopics>
+    ${t(`<Hyperlink Url="#xpointer(x)"/>`)}${t(`<Hyperlink Url="javascript:alert(1)"/>`)}${t(`<Hyperlink Url="..\\docs\\plan.docx"/>`)}
+    ${t(`<Hyperlink Url="https://example.com/a b"/><OneImage/><OneBoundary/><Icon IconType="urn:mindjet:Smiley"/>`)}
+    ${t(`<Offset CX="-5"/>`)}
+  </SubTopics></Topic></OneTopic><Relationships><Relationship FromTopicID="r" ToTopicID="gone"/></Relationships></Map>`;
+  const { roots, lost } = await fromMindmanagerReport(new TextEncoder().encode(doc));
+  expect(roots[0].children.map((c) => c.link)).toEqual([undefined, undefined, undefined, "https://example.com/a b", undefined]);
+  expect(lost).toEqual([
+    "links to other topics dropped", "2 × links that are not web or mail addresses dropped", "pictures dropped", "boundaries dropped",
+    "icons with no counterpart dropped", "maps with unequal sides opened split evenly", "relationships dropped",
+  ]);
+  expect((await fromMindmanagerReport(toMindmanager([mk("clean")]))).lost).toEqual([]);
+});
+
+test("flat XML in UTF-16 opens, with or without a byte order mark", async () => {
+  const xml = `<?xml version="1.0" encoding="UTF-16"?><Map><OneTopic><Topic><Text PlainText="Café"/></Topic></OneTopic></Map>`;
+  const units = (le: boolean) => [...xml].flatMap((c) => (le ? [c.charCodeAt(0) & 255, c.charCodeAt(0) >> 8] : [c.charCodeAt(0) >> 8, c.charCodeAt(0) & 255]));
+  for (const bytes of [[0xff, 0xfe, ...units(true)], [0xfe, 0xff, ...units(false)], units(true), units(false)])
+    expect((await fromMindmanagerBytes(new Uint8Array(bytes)))[0].text).toBe("Café");
+});
+
+test("tabs and line breaks survive in attributes, and characters XML forbids are left out", async () => {
+  const [r] = await fromMindmanagerBytes(toMindmanager([{ ...mk("a\tb\r\nc\u000bd\u0000"), note: "x\ty" }]));
+  expect(r.text).toBe("a\tb\r\ncd");
+  expect(r.note).toBe("x\ty");
 });
