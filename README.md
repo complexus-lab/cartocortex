@@ -8,7 +8,7 @@ Tabs and menus: the toolbar is three menus (File with templates, recent files an
 
 ## Download
 
-Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The Windows and Linux builds are not code-signed (on Windows choose More info, then Run anyway). The macOS build is signed and notarized when the release was made with the Apple credentials; otherwise, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open. How releases are made: [RELEASING.md](RELEASING.md).
+Get the latest build for macOS, Windows or Linux from the [Releases page](https://github.com/complexus-lab/cartocortex/releases/latest). The Windows and Linux builds are not code-signed (on Windows choose More info, then Run anyway). The macOS build is signed and notarized when the release was made with the Apple credentials; otherwise, if the app is reported as damaged, run `xattr -cr /Applications/Cartocortex.app` once in Terminal, or right-click the app and choose Open. Each published release carries `SHA256SUMS`, the digests of its installers, signed with the Complexus Lab Ed25519 key in `SHA256SUMS.sig`; [RELEASING.md](RELEASING.md#checking-a-download) shows how to check a download. How releases are made: [RELEASING.md](RELEASING.md).
 
 ## Run
 

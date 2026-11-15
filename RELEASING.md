@@ -8,6 +8,34 @@
 
 To try the pipeline without publishing anything, run **Release** from the Actions tab (*Run workflow*). It builds all four targets and keeps the installers as workflow artifacts.
 
+## Signed checksums
+
+When a release is published, the **Sign release** workflow (`.github/workflows/sign.yml`) lists every installer with its SHA-256 digest in `SHA256SUMS`, signs that file with the Complexus Lab Ed25519 key, attaches `SHA256SUMS` and `SHA256SUMS.sig` to the release, and copies both to `https://complexuslab.fr/cartocortex/releases/<tag>/`. The second copy lets a user check the signature against a host other than GitHub. To sign a release published earlier, run **Sign release** from the Actions tab with its tag.
+
+This signature proves where the files come from. It does not replace the operating systems' own code signing: macOS and Windows still warn about installers that are not signed with an Apple or Windows certificate.
+
+The key is the one that signs Rouvre releases and its bundle index. Its public half is [`keys/release-signing.pub.pem`](keys/release-signing.pub.pem); SHA-256 of its DER encoding: `695c39099ec072b9acc83a113cf80b107b7590dca84672593e79431d8bc5e9df`. The workflow refuses to sign when the private key does not match that file.
+
+### One-time setup
+
+In *Settings → Environments*, create an environment named `release`:
+
+1. Under *Deployment branches and tags*, choose *Selected branches and tags* and add the branch `main` and the tag pattern `v*`. A published release runs the workflow on its tag; a manual run runs on `main`.
+2. Add the secret `COMPLEXUS_LAB_SIGNING_KEY`: the PEM private key, the same one stored as `ROUVRE_SIGNING_KEY` in the Rouvre repository, starting with `-----BEGIN PRIVATE KEY-----`.
+3. Add the secret `SITE_TOKEN`: a fine-grained personal access token limited to `complexus-lab/complexus-lab-site`, with read and write access to its contents. The token already used by Rouvre fits.
+
+### Checking a download
+
+With OpenSSL 3 (on macOS, `brew install openssl@3`, then use `$(brew --prefix openssl@3)/bin/openssl`: the `openssl` shipped with macOS cannot verify Ed25519):
+
+```bash
+curl -LO https://complexuslab.fr/cartocortex/release-signing-key.pem
+curl -LO https://complexuslab.fr/cartocortex/releases/v0.1.2/SHA256SUMS
+curl -LO https://complexuslab.fr/cartocortex/releases/v0.1.2/SHA256SUMS.sig
+openssl pkeyutl -verify -pubin -inkey release-signing-key.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
+grep Cartocortex_0.1.2_aarch64.dmg SHA256SUMS | shasum -a 256 -c   # name of the file you downloaded
+```
+
 ## macOS signing and notarization
 
 Without the secrets below, the macOS builds are unsigned and users need the right-click → Open workaround. With all six present, the workflow signs with a Developer ID certificate and notarizes the app with Apple (the run takes a few minutes longer).
